@@ -45,7 +45,10 @@ pub fn update(state: &mut UiState, event: AppEvent) -> Option<Cmd> {
         }
 
         AppEvent::ChoicePicksLoaded { month, picks } => {
-            state.all_picks = picks;
+            // Merge into all_picks, replacing existing entries for the same month
+            // (so re-syncs stay fresh) but keeping other months intact.
+            state.all_picks.retain(|p| p.choice_month != month);
+            state.all_picks.extend(picks);
             state.apply_filters();
             None
         }
