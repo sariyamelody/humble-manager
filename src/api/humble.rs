@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 use uuid::Uuid;
 
 use crate::models::{
@@ -82,6 +83,7 @@ pub async fn fetch_order_refs(client: &HumbleClient) -> Result<Vec<String>> {
 /// Fetch a single order and convert it into a Bundle + Vec<GameKey>.
 /// Also returns `Some(choice_url)` when the order is a Choice subscription month
 /// (e.g. `Some("april-2025")`), so the caller can fetch the membership page.
+/// Retries up to 3 times with exponential backoff on transient failures.
 pub async fn fetch_order(
     client: &HumbleClient,
     gamekey: &str,
@@ -91,17 +93,7 @@ pub async fn fetch_order(
         gamekey
     );
 
-    let detail: OrderDetail = client
-        .client()
-        .get(&url)
-        .send()
-        .await
-        .with_context(|| format!("fetching order {}", gamekey))?
-        .error_for_status()
-        .with_context(|| format!("order {} HTTP error", gamekey))?
-        .json()
-        .await
-        .with_context(|| format!("parsing order {} JSON", gamekey))?;
+    let detail: OrderDetail = fetch_with_retry(client, &url, gamekey).await?;
 
     let purchase_date = detail
         .created
@@ -131,6 +123,51 @@ pub async fn fetch_order(
     };
 
     Ok((bundle, keys, choice_url))
+}
+
+/// GET `url`, deserialize as `OrderDetail`, retrying on transient errors.
+/// Delays: 2s, 4s, 8s. 429 responses get a longer initial delay (10s).
+async fn fetch_with_retry(client: &HumbleClient, url: &str, gamekey: &str) -> Result<OrderDetail> {
+    let delays = [Duration::from_secs(2), Duration::from_secs(4), Duration::from_secs(8)];
+    let mut last_err = None;
+
+    for (attempt, &delay) in delays.iter().enumerate() {
+        match client.client().get(url).send().await {
+            Ok(resp) => {
+                let status = resp.status();
+                if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                    let wait = Duration::from_secs(10 + delay.as_secs());
+                    tracing::warn!("Rate limited on {} (attempt {}), waiting {}s", gamekey, attempt + 1, wait.as_secs());
+                    tokio::time::sleep(wait).await;
+                    last_err = Some(anyhow::anyhow!("429 rate limited"));
+                    continue;
+                }
+                if !status.is_success() {
+                    let err = anyhow::anyhow!("HTTP {} for order {}", status, gamekey);
+                    if attempt < delays.len() - 1 {
+                        tracing::warn!("{}, retrying in {}s", err, delay.as_secs());
+                        tokio::time::sleep(delay).await;
+                        last_err = Some(err);
+                        continue;
+                    }
+                    return Err(err);
+                }
+                return resp.json::<OrderDetail>().await
+                    .with_context(|| format!("parsing order {} JSON", gamekey));
+            }
+            Err(e) => {
+                if attempt < delays.len() - 1 {
+                    tracing::warn!("Request failed for {} (attempt {}): {}, retrying in {}s", gamekey, attempt + 1, e, delay.as_secs());
+                    tokio::time::sleep(delay).await;
+                    last_err = Some(anyhow::anyhow!(e));
+                    continue;
+                }
+                return Err(anyhow::anyhow!(e)).with_context(|| format!("fetching order {}", gamekey));
+            }
+        }
+    }
+
+    Err(last_err.unwrap_or_else(|| anyhow::anyhow!("fetch_with_retry exhausted for {}", gamekey)))
 }
 
 fn tpk_to_game_key(t: TpkEntry, bundle: &Bundle) -> GameKey {

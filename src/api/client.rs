@@ -1,5 +1,6 @@
 use anyhow::Result;
 use reqwest::{Client, header::{HeaderMap, HeaderValue}};
+use std::time::Duration;
 
 pub struct HumbleClient {
     client: Client,
@@ -19,6 +20,8 @@ impl HumbleClient {
         let client = Client::builder()
             .default_headers(headers)
             .gzip(true)
+            .timeout(Duration::from_secs(30))
+            .connect_timeout(Duration::from_secs(10))
             .build()?;
 
         Ok(Self { client })
