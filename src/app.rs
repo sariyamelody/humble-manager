@@ -73,41 +73,20 @@ async fn run_loop(
     loop {
         terminal.draw(|f| render(f, state))?;
 
-        let event = match event_rx.recv().await {
+        // Block until at least one event arrives, then drain all queued events
+        // before the next draw. This prevents a sync flood (345 OrderLoaded events)
+        // from causing 345 full redraws and making input feel frozen.
+        let first = match event_rx.recv().await {
             Some(e) => e,
             None => break,
         };
-
-        // Handle auth submission specially (need to save config)
-        if let AppEvent::Input(crossterm::event::Event::Key(key)) = &event {
-            if state.mode == Mode::Auth && key.code == crossterm::event::KeyCode::Enter {
-                let cookie = state.auth_input.trim().to_string();
-                if !cookie.is_empty() {
-                    let mut new_config = config.clone();
-                    new_config.auth.session_cookie = cookie;
-                    new_config.save()?;
-                    state.mode = Mode::Normal;
-                    let _ = cmd_tx.send(Cmd::StartFullSync).await;
-                    continue;
-                }
-            }
+        if handle_event(first, state, cmd_tx, config)? == LoopAction::Break {
+            break;
         }
-
-        let maybe_cmd = update(state, event);
-
-        if let Some(cmd) = maybe_cmd {
-            match cmd {
-                Cmd::Quit => break,
-                Cmd::ExportCsv(path) => {
-                    let keys = state.visible.clone();
-                    if let Err(e) = export_csv(&path, &keys) {
-                        state.last_error = Some(format!("Export failed: {}", e));
-                        state.mode = Mode::Error;
-                    }
-                }
-                other => {
-                    let _ = cmd_tx.send(other).await;
-                }
+        while let Ok(event) = event_rx.try_recv() {
+            if handle_event(event, state, cmd_tx, config)? == LoopAction::Break {
+                let _ = cmd_tx.send(Cmd::Quit).await;
+                return Ok(());
             }
         }
 
@@ -119,4 +98,49 @@ async fn run_loop(
 
     let _ = cmd_tx.send(Cmd::Quit).await;
     Ok(())
+}
+
+#[derive(PartialEq)]
+enum LoopAction { Continue, Break }
+
+fn handle_event(
+    event: AppEvent,
+    state: &mut UiState,
+    cmd_tx: &mpsc::Sender<Cmd>,
+    config: &Config,
+) -> Result<LoopAction> {
+    // Handle auth submission specially (need to save config)
+    if let AppEvent::Input(crossterm::event::Event::Key(key)) = &event {
+        if state.mode == Mode::Auth && key.code == crossterm::event::KeyCode::Enter {
+            let cookie = state.auth_input.trim().to_string();
+            if !cookie.is_empty() {
+                let mut new_config = config.clone();
+                new_config.auth.session_cookie = cookie;
+                new_config.save()?;
+                state.mode = Mode::Normal;
+                let _ = cmd_tx.try_send(Cmd::StartFullSync);
+                return Ok(LoopAction::Continue);
+            }
+        }
+    }
+
+    let maybe_cmd = update(state, event);
+
+    if let Some(cmd) = maybe_cmd {
+        match cmd {
+            Cmd::Quit => return Ok(LoopAction::Break),
+            Cmd::ExportCsv(path) => {
+                let keys = state.visible.clone();
+                if let Err(e) = export_csv(&path, &keys) {
+                    state.last_error = Some(format!("Export failed: {}", e));
+                    state.mode = Mode::Error;
+                }
+            }
+            other => {
+                let _ = cmd_tx.try_send(other);
+            }
+        }
+    }
+
+    Ok(LoopAction::Continue)
 }
