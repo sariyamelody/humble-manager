@@ -96,7 +96,7 @@ fn handle_normal_input(state: &mut UiState, key: crossterm::event::KeyEvent) -> 
         (KeyModifiers::NONE, KeyCode::Up) => { state.move_up(); None }
 
         (KeyModifiers::NONE, KeyCode::Char('g')) => { state.jump_top(); None }
-        (KeyModifiers::NONE, KeyCode::Char('G')) => { state.jump_bottom(); None }
+        (KeyModifiers::SHIFT, KeyCode::Char('G')) => { state.jump_bottom(); None }
 
         (KeyModifiers::CONTROL, KeyCode::Char('d')) |
         (KeyModifiers::NONE, KeyCode::PageDown) => { state.page_down(15); None }
