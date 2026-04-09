@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use crossterm::event::Event;
 use crate::models::{bundle::Bundle, choice::ChoicePick, key::GameKey};
 
@@ -19,6 +20,8 @@ pub enum AppEvent {
     SyncError(String),
     /// Initial data loaded from local cache (fast path on startup)
     CacheLoaded { keys: Vec<GameKey>, picks: Vec<ChoicePick> },
+    /// Last full sync timestamp loaded from DB (None = never synced)
+    SyncStateLoaded(Option<DateTime<Utc>>),
 }
 
 #[derive(Debug)]

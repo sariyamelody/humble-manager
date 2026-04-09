@@ -49,6 +49,16 @@ async fn load_cache(db: &Db, tx: &mpsc::Sender<AppEvent>) {
             warn!("Failed to load cache: {}", e);
         }
     }
+
+    match db.load_sync_state("full_sync".to_string()).await {
+        Ok(last_synced) => {
+            let _ = tx.send(AppEvent::SyncStateLoaded(last_synced)).await;
+        }
+        Err(e) => {
+            warn!("Failed to load sync state: {}", e);
+            let _ = tx.send(AppEvent::SyncStateLoaded(None)).await;
+        }
+    }
 }
 
 async fn run_full_sync(config: Config, db: Db, tx: mpsc::Sender<AppEvent>) {

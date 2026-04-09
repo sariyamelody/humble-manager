@@ -21,6 +21,8 @@ pub enum Mode {
     ExportPrompt,
     /// Non-fatal error displayed
     Error,
+    /// Suggestion to sync (shown when cache is stale or never synced)
+    SyncPrompt,
 }
 
 /// A unified row that can be either a regular key or a Choice pick
@@ -92,6 +94,8 @@ pub struct UiState {
     pub export_input: String,
     /// Which filter chip is focused in Filter mode
     pub filter_focus: FilterFocus,
+    /// Message shown in SyncPrompt modal (e.g. "3 days ago" or "never")
+    pub sync_prompt_msg: String,
     matcher: SkimMatcherV2,
 }
 
@@ -146,6 +150,7 @@ impl UiState {
             auth_input_visible: false,
             export_input: String::new(),
             filter_focus: FilterFocus::default(),
+            sync_prompt_msg: String::new(),
             matcher: SkimMatcherV2::default(),
         }
     }

@@ -70,11 +70,6 @@ async fn run_loop(
     config: &Config,
     db: &Db,
 ) -> Result<()> {
-    // Kick off initial sync if we have a cookie
-    if !config.needs_auth() {
-        let _ = cmd_tx.send(Cmd::StartFullSync).await;
-    }
-
     loop {
         terminal.draw(|f| render(f, state))?;
 

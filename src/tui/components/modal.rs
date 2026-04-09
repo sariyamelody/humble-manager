@@ -128,6 +128,38 @@ impl<'a> Widget for ErrorModal<'a> {
     }
 }
 
+/// Stale-cache sync suggestion modal.
+pub struct SyncPromptModal<'a> {
+    pub last_synced_msg: &'a str,
+}
+
+impl<'a> Widget for SyncPromptModal<'a> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let modal_area = centered_rect(55, 7, area);
+        Clear.render(modal_area, buf);
+
+        let block = Block::default()
+            .title(" Sync Suggested ")
+            .borders(Borders::ALL)
+            .style(Style::default().bg(Color::DarkGray));
+
+        let inner = block.inner(modal_area);
+        block.render(modal_area, buf);
+
+        let lines = vec![
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("Last sync: ", Style::default().fg(Color::Gray)),
+                Span::styled(self.last_synced_msg.to_string(), Style::default().fg(Color::Yellow)),
+            ]),
+            Line::from(""),
+            Line::from(Span::styled("r=sync now  any other key=dismiss", Style::default().fg(Color::DarkGray))),
+        ];
+
+        Paragraph::new(lines).render(inner, buf);
+    }
+}
+
 fn centered_rect(percent_x: u16, height: u16, r: Rect) -> Rect {
     let popup_layout = Layout::default()
         .direction(Direction::Vertical)

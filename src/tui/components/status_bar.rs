@@ -21,6 +21,7 @@ impl<'a> Widget for StatusBar<'a> {
             Mode::Auth => Span::styled("  AUTH  ", Style::default().fg(Color::Black).bg(Color::Red).add_modifier(Modifier::BOLD)),
             Mode::ExportPrompt => Span::styled(" EXPORT ", Style::default().fg(Color::Black).bg(Color::Magenta).add_modifier(Modifier::BOLD)),
             Mode::Error => Span::styled("  ERROR ", Style::default().fg(Color::Black).bg(Color::Red).add_modifier(Modifier::BOLD)),
+            Mode::SyncPrompt => Span::styled(" NORMAL ", Style::default().fg(Color::Black).bg(Color::Green).add_modifier(Modifier::BOLD)),
         };
 
         let sync_span = if let Some((done, total)) = self.state.sync_progress {

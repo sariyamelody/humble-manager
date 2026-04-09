@@ -1,13 +1,11 @@
+use chrono::Utc;
 use crossterm::event::{Event, KeyCode, KeyModifiers};
 
 use crate::tui::{
     app_event::{AppEvent, Cmd},
     state::{FilterFocus, Mode, UiState},
 };
-use crate::models::{
-    filter::SourceFilter,
-    key::Platform,
-};
+use crate::models::filter::SourceFilter;
 
 /// Process one event, mutate state, and optionally return a Cmd to the coordinator.
 pub fn update(state: &mut UiState, event: AppEvent) -> Option<Cmd> {
@@ -64,6 +62,30 @@ pub fn update(state: &mut UiState, event: AppEvent) -> Option<Cmd> {
             None
         }
 
+        AppEvent::SyncStateLoaded(last_synced) => {
+            let stale = match last_synced {
+                None => Some("never synced".to_string()),
+                Some(t) => {
+                    let age_secs = (Utc::now() - t).num_seconds().max(0) as u64;
+                    if age_secs > 24 * 3600 {
+                        let days = age_secs / 86400;
+                        Some(if days == 1 {
+                            "1 day ago".to_string()
+                        } else {
+                            format!("{} days ago", days)
+                        })
+                    } else {
+                        None
+                    }
+                }
+            };
+            if let Some(msg) = stale {
+                state.sync_prompt_msg = msg;
+                state.mode = Mode::SyncPrompt;
+            }
+            None
+        }
+
         AppEvent::Input(event) => handle_input(state, event),
     }
 }
@@ -80,6 +102,13 @@ fn handle_input(state: &mut UiState, event: Event) -> Option<Cmd> {
             // Any key dismisses the error
             state.last_error = None;
             state.mode = Mode::Normal;
+            None
+        }
+        Mode::SyncPrompt => {
+            state.mode = Mode::Normal;
+            if key.code == KeyCode::Char('r') {
+                return Some(Cmd::StartFullSync);
+            }
             None
         }
         Mode::Normal => handle_normal_input(state, key),

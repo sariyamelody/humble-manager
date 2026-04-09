@@ -8,7 +8,7 @@ use super::{
         detail_panel::DetailPanel,
         filter_bar::FilterBar,
         key_table::KeyTable,
-        modal::{AuthModal, ErrorModal, ExportModal},
+        modal::{AuthModal, ErrorModal, ExportModal, SyncPromptModal},
         status_bar::StatusBar,
     },
     state::{Mode, UiState},
@@ -52,6 +52,10 @@ pub fn render(frame: &mut Frame, state: &mut UiState) {
                 let msg = msg.clone();
                 frame.render_widget(ErrorModal { message: &msg }, area);
             }
+        }
+        Mode::SyncPrompt => {
+            let msg = state.sync_prompt_msg.clone();
+            frame.render_widget(SyncPromptModal { last_synced_msg: &msg }, area);
         }
         _ => {}
     }

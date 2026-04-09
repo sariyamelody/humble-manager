@@ -22,6 +22,7 @@ pub enum DbMsg {
     LoadAllBundles(oneshot::Sender<Result<Vec<Bundle>>>),
     KnownGamekeyMachineNames(oneshot::Sender<Result<Vec<String>>>),
     UpdateSyncState { resource: String, status: String, error: Option<String>, sender: oneshot::Sender<Result<()>> },
+    LoadSyncState { resource: String, sender: oneshot::Sender<Result<Option<chrono::DateTime<Utc>>>> },
 }
 
 /// Wraps the SQLite connection; all access goes through `send()`.
@@ -98,6 +99,12 @@ impl Db {
         rx.await.context("db actor gone")?
     }
 
+    pub async fn load_sync_state(&self, resource: String) -> Result<Option<chrono::DateTime<Utc>>> {
+        let (tx, rx) = oneshot::channel();
+        self.tx.send(DbMsg::LoadSyncState { resource, sender: tx }).await.ok();
+        rx.await.context("db actor gone")?
+    }
+
     pub async fn update_sync_state(&self, resource: String, status: String, error: Option<String>) -> Result<()> {
         let (tx, rx) = oneshot::channel();
         self.tx.send(DbMsg::UpdateSyncState { resource, status, error, sender: tx }).await.ok();
@@ -116,6 +123,9 @@ fn handle_msg(conn: &Connection, msg: DbMsg) {
         DbMsg::KnownGamekeyMachineNames(tx) => { let _ = tx.send(known_gamekey_machine_names(conn)); }
         DbMsg::UpdateSyncState { resource, status, error, sender } => {
             let _ = sender.send(update_sync_state(conn, &resource, &status, error.as_deref()));
+        }
+        DbMsg::LoadSyncState { resource, sender } => {
+            let _ = sender.send(load_sync_state(conn, &resource));
         }
     }
 }
@@ -367,6 +377,14 @@ fn known_gamekey_machine_names(conn: &Connection) -> Result<Vec<String>> {
     let mut stmt = conn.prepare("SELECT tpkd_machine_name FROM game_keys")?;
     let names: Result<Vec<String>, _> = stmt.query_map([], |row| row.get(0))?.collect();
     Ok(names?)
+}
+
+fn load_sync_state(conn: &Connection, resource: &str) -> Result<Option<chrono::DateTime<Utc>>> {
+    let mut stmt = conn.prepare(
+        "SELECT last_synced_at FROM sync_state WHERE resource = ?1 LIMIT 1"
+    )?;
+    let ts: Option<i64> = stmt.query_row(params![resource], |row| row.get(0)).ok();
+    Ok(ts.and_then(|t| Utc.timestamp_opt(t, 0).single()))
 }
 
 fn update_sync_state(conn: &Connection, resource: &str, status: &str, error: Option<&str>) -> Result<()> {
