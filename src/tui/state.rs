@@ -183,9 +183,16 @@ impl UiState {
             }
         }
 
-        // Choice picks
+        // Choice picks — skip any that have already been claimed (same machine_name exists as a GameKey)
+        let claimed: std::collections::HashSet<&str> = self.all_keys.iter()
+            .map(|k| k.tpkd_machine_name.as_str())
+            .collect();
+
         if matches!(self.filter.source, SourceFilter::All | SourceFilter::Choice) {
             for pick in &self.all_picks {
+                if claimed.contains(pick.machine_name.as_str()) {
+                    continue;
+                }
                 if !self.filter.show_expired && pick.is_expired {
                     continue;
                 }
