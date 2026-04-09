@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, atomic::{AtomicU32, Ordering}};
 use tokio::sync::{mpsc, Semaphore};
 use tracing::{info, warn};
 
@@ -79,10 +79,12 @@ async fn run_full_sync(config: Config, db: Db, tx: mpsc::Sender<AppEvent>) {
 
     // Fetch all orders concurrently (bounded by semaphore)
     let sem = Arc::new(Semaphore::new(config.sync.max_concurrent_requests));
+    let completed = Arc::new(AtomicU32::new(0));
     let mut handles = Vec::new();
 
-    for (i, gamekey) in order_refs.into_iter().enumerate() {
+    for gamekey in order_refs.into_iter() {
         let sem = sem.clone();
+        let completed = completed.clone();
         let session = session.clone();
         let tx = tx.clone();
         let db = db.clone();
@@ -109,7 +111,6 @@ async fn run_full_sync(config: Config, db: Db, tx: mpsc::Sender<AppEvent>) {
                     }
                     let _ = tx.send(AppEvent::OrderLoaded { bundle, keys }).await;
 
-                    // If this order is a Choice subscription month, fetch its picks
                     if let Some(slug) = choice_url {
                         fetch_and_store_choice(&client, &slug, &db, &tx).await;
                     }
@@ -119,8 +120,9 @@ async fn run_full_sync(config: Config, db: Db, tx: mpsc::Sender<AppEvent>) {
                 }
             }
 
+            let done = completed.fetch_add(1, Ordering::Relaxed) + 1;
             let _ = tx.send(AppEvent::SyncProgress {
-                done: (i + 1) as u32,
+                done,
                 total,
                 label: gamekey.clone(),
             }).await;
