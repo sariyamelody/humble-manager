@@ -57,6 +57,8 @@ struct TpkEntry {
     #[serde(default)]
     is_expired: bool,
     steam_app_id: Option<serde_json::Value>,
+    /// Absolute expiry datetime, e.g. "2027-04-24T07:00:00" (naive, assume UTC)
+    expiry_date: Option<String>,
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -193,6 +195,13 @@ fn tpk_to_game_key(t: TpkEntry, bundle: &Bundle) -> GameKey {
         t.key_type.as_deref().unwrap_or(""),
     );
 
+    // Parse expiry_date — same naive format as Choice deadlines: "2027-04-24T07:00:00"
+    let expiry_date = t.expiry_date.as_deref().and_then(|s| {
+        NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
+            .ok()
+            .map(|ndt| ndt.and_utc())
+    });
+
     GameKey {
         id: Uuid::new_v4().to_string(),
         tpkd_machine_name: t.machine_name,
@@ -205,7 +214,7 @@ fn tpk_to_game_key(t: TpkEntry, bundle: &Bundle) -> GameKey {
         bundle_machine_name: bundle.machine_name.clone(),
         bundle_human_name: bundle.human_name.clone(),
         purchase_date: bundle.purchased_at,
-        expiry_date: None, // num_days_until_expired=-1 means no expiry; we don't have an absolute date here
+        expiry_date,
         steam_app_id,
         igdb_genres: vec![],
         is_owned_on_steam: None,
