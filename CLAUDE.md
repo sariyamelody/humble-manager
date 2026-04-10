@@ -25,6 +25,7 @@ Single-crate Rust binary. No workspace.
 - **Auth**: Cookie `_simpleauth_sess=<value>`, header `X-Requested-By: hb_android_app`
 - **Orders list**: `GET /api/v1/user/order` → `[{"gamekey": "..."}]`
 - **Order detail**: `GET /api/v1/order/{gamekey}?all_tpkds=true` — the `?all_tpkds=true` param is **required** or `tpkd_dict` is absent from the response
+- **`created` field**: naive datetime, no timezone — `"2016-07-22T22:59:01.787060"`. Parse with `%Y-%m-%dT%H:%M:%S%.f`, assume UTC.
 - **Choice picks** (current month): `GET /membership/home` → parse `<script id="webpack-subscriber-hub-data">`
 - **Choice picks** (past months): `GET /membership/{choice_url}` → parse `<script id="webpack-monthly-product-data">` (different script tag ID, same JSON structure)
 - **Discovering past Choice months**: Order detail for subscription orders has `product.choice_url` (e.g. `"april-2025"`) when `product.category == "subscriptioncontent"`
