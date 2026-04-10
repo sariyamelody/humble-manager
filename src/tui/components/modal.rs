@@ -6,7 +6,8 @@ use ratatui::{
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph, StatefulWidget, Widget, Wrap},
 };
 
-use crate::tui::state::UiState;
+use crate::models::filter::SortOrder;
+use crate::tui::state::{PickerSubMode, UiState};
 
 /// Auth modal: prompts the user to paste their session cookie.
 pub struct AuthModal<'a> {
@@ -193,17 +194,39 @@ impl<'a> Widget for GenrePickerModal<'a> {
             ])
             .split(inner);
 
-        // Search input
+        // Search input — show cursor only when in Search sub-mode
         let search_block = Block::default().borders(Borders::BOTTOM);
         let search_inner = search_block.inner(layout[0]);
         search_block.render(layout[0], buf);
-        Paragraph::new(Line::from(vec![
-            Span::styled("Search: ", Style::default().fg(Color::Gray)),
+        let in_search = picker.sub_mode == PickerSubMode::Search;
+        let search_text = if in_search {
+            format!("{}_", picker.search)
+        } else if picker.search.is_empty() {
+            String::new()
+        } else {
+            picker.search.clone()
+        };
+        let search_label_style = if in_search {
+            Style::default().fg(Color::Cyan)
+        } else {
+            Style::default().fg(Color::Gray)
+        };
+        let sort_type_spans = vec![
             Span::styled(
-                format!("{}_", picker.search),
-                Style::default().fg(Color::White),
+                format!(" [{}]", picker.sort.label()),
+                Style::default().fg(Color::DarkGray),
             ),
-        ])).render(search_inner, buf);
+            Span::styled(
+                format!(" [{}]", picker.type_filter.label()),
+                Style::default().fg(Color::DarkGray),
+            ),
+        ];
+        let mut search_line_spans = vec![
+            Span::styled("Search: ", search_label_style),
+            Span::styled(search_text, Style::default().fg(Color::White)),
+        ];
+        search_line_spans.extend(sort_type_spans);
+        Paragraph::new(Line::from(search_line_spans)).render(search_inner, buf);
 
         // Tag list
         let active_style = Style::default()
@@ -250,15 +273,85 @@ impl<'a> Widget for GenrePickerModal<'a> {
 
         StatefulWidget::render(list, layout[1], buf, &mut picker.list_state);
 
-        // Footer
+        // Footer — context-sensitive hints based on sub-mode
         let active_count = picker.pending_filter.len();
-        let footer_text = if active_count > 0 {
-            format!(" Space:toggle  Enter:apply ({} active)  Esc:cancel  Ctrl+C:clear all ", active_count)
+        let footer_text = if picker.sub_mode == PickerSubMode::Search {
+            if active_count > 0 {
+                format!(" Enter:done  Esc:back  ({} active) ", active_count)
+            } else {
+                " Type to search  Enter:done  Esc:back ".to_string()
+            }
+        } else if active_count > 0 {
+            format!(" Space:toggle  Enter:apply ({} active)  /:search  s:sort  f:type  Esc:close  Ctrl+C:clear ", active_count)
         } else {
-            " Space:toggle  Enter:apply  Esc:cancel ".to_string()
+            " Space:toggle  Enter:apply  /:search  s:sort  f:type  Esc:close ".to_string()
         };
         Paragraph::new(Span::styled(footer_text, Style::default().fg(Color::DarkGray)))
             .render(layout[2], buf);
+    }
+}
+
+/// Sort order picker modal.
+pub struct SortPickerModal<'a> {
+    pub state: &'a UiState,
+}
+
+impl<'a> Widget for SortPickerModal<'a> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let all = SortOrder::all();
+        let height = all.len() as u16 + 4; // border + title + footer
+        let modal_area = centered_rect(40, height, area);
+        Clear.render(modal_area, buf);
+
+        let block = Block::default()
+            .title(" Sort Order ")
+            .borders(Borders::ALL)
+            .style(Style::default().bg(Color::DarkGray));
+
+        let inner = block.inner(modal_area);
+        block.render(modal_area, buf);
+
+        let layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Min(0),
+                Constraint::Length(1),
+            ])
+            .split(inner);
+
+        let active_style = Style::default()
+            .fg(Color::Black).bg(Color::Cyan)
+            .add_modifier(Modifier::BOLD);
+
+        let items: Vec<ListItem> = all.iter().enumerate().map(|(i, order)| {
+            let is_current_sort = *order == self.state.filter.sort;
+            let is_cursor = i == self.state.sort_picker_cursor;
+            let label = if is_current_sort {
+                format!("● {}", order.label())
+            } else {
+                format!("  {}", order.label())
+            };
+            let style = if is_current_sort && !is_cursor {
+                Style::default().fg(Color::Cyan)
+            } else {
+                Style::default()
+            };
+            ListItem::new(Span::styled(label, style))
+        }).collect();
+
+        let mut list_state = ratatui::widgets::ListState::default();
+        list_state.select(Some(self.state.sort_picker_cursor));
+
+        let list = List::new(items)
+            .highlight_style(active_style)
+            .highlight_symbol("▶ ");
+
+        StatefulWidget::render(list, layout[0], buf, &mut list_state);
+
+        Paragraph::new(Span::styled(
+            " j/k:move  Enter:select  Esc:cancel ",
+            Style::default().fg(Color::DarkGray),
+        )).render(layout[1], buf);
     }
 }
 

@@ -25,14 +25,72 @@ pub enum Mode {
     SyncPrompt,
     /// Genre/tag picker modal
     GenrePicker,
+    /// Sort order picker modal
+    SortPicker,
+}
+
+/// Sub-mode within the genre picker: navigating the list vs typing a search query.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PickerSubMode {
+    Navigate,
+    Search,
+}
+
+/// Sort order for the genre/tag picker list.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PickerSort {
+    /// Most common first (default)
+    CountDesc,
+    /// Alphabetical A-Z
+    NameAsc,
+}
+
+impl PickerSort {
+    pub fn next(&self) -> Self {
+        match self {
+            PickerSort::CountDesc => PickerSort::NameAsc,
+            PickerSort::NameAsc => PickerSort::CountDesc,
+        }
+    }
+    pub fn label(&self) -> &str {
+        match self {
+            PickerSort::CountDesc => "Count↓",
+            PickerSort::NameAsc => "Name A-Z",
+        }
+    }
+}
+
+/// Type filter for the genre/tag picker: show all, genres only, or tags only.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PickerTypeFilter {
+    All,
+    GenresOnly,
+    TagsOnly,
+}
+
+impl PickerTypeFilter {
+    pub fn next(&self) -> Self {
+        match self {
+            PickerTypeFilter::All => PickerTypeFilter::GenresOnly,
+            PickerTypeFilter::GenresOnly => PickerTypeFilter::TagsOnly,
+            PickerTypeFilter::TagsOnly => PickerTypeFilter::All,
+        }
+    }
+    pub fn label(&self) -> &str {
+        match self {
+            PickerTypeFilter::All => "All",
+            PickerTypeFilter::GenresOnly => "Genres",
+            PickerTypeFilter::TagsOnly => "Tags",
+        }
+    }
 }
 
 /// State for the genre/tag picker modal.
 pub struct GenrePickerState {
-    /// All (name, library_count, is_genre) tuples sorted by count descending.
+    /// All (name, library_count, is_genre) tuples stored in canonical order (by count desc, then name).
     /// is_genre = true when the name appears as a steam_genre or igdb_genre for any library item.
     pub all_items: Vec<(String, u32, bool)>,
-    /// Indices into all_items that match the current search query
+    /// Indices into all_items that pass the current search + type filter, in current sort order.
     pub filtered_indices: Vec<usize>,
     /// Cursor position within filtered_indices
     pub cursor: usize,
@@ -41,6 +99,9 @@ pub struct GenrePickerState {
     /// Tags selected in this picker session (applied on Enter, discarded on Esc)
     pub pending_filter: HashSet<String>,
     pub list_state: ListState,
+    pub sub_mode: PickerSubMode,
+    pub sort: PickerSort,
+    pub type_filter: PickerTypeFilter,
 }
 
 impl GenrePickerState {
@@ -74,22 +135,51 @@ impl GenrePickerState {
         let mut list_state = ListState::default();
         if len > 0 { list_state.select(Some(0)); }
 
-        Self {
-            filtered_indices: (0..len).collect(),
+        let mut state = Self {
+            filtered_indices: vec![],
             cursor: 0,
             search: String::new(),
             pending_filter: current_filter.clone(),
             all_items,
             list_state,
-        }
+            sub_mode: PickerSubMode::Navigate,
+            sort: PickerSort::CountDesc,
+            type_filter: PickerTypeFilter::All,
+        };
+        state.apply_view();
+        state
     }
 
-    pub fn apply_search(&mut self) {
+    /// Rebuild `filtered_indices` applying search query, type filter, and sort order.
+    pub fn apply_view(&mut self) {
         let q = self.search.to_lowercase();
-        self.filtered_indices = self.all_items.iter().enumerate()
-            .filter(|(_, (tag, _, _))| q.is_empty() || tag.to_lowercase().contains(&q))
+        let mut indices: Vec<usize> = self.all_items.iter().enumerate()
+            .filter(|(_, (_name, _, is_genre))| {
+                // Type filter
+                match self.type_filter {
+                    PickerTypeFilter::All => true,
+                    PickerTypeFilter::GenresOnly => *is_genre,
+                    PickerTypeFilter::TagsOnly => !is_genre,
+                }
+            })
+            .filter(|(_, (name, _, _))| q.is_empty() || name.to_lowercase().contains(&q))
             .map(|(i, _)| i)
             .collect();
+
+        match self.sort {
+            PickerSort::CountDesc => {
+                // all_items is already sorted by count desc; preserve that order
+                indices.sort_unstable();
+                // Re-sort by count desc (stable relative to all_items order)
+                indices.sort_by(|&a, &b| self.all_items[b].1.cmp(&self.all_items[a].1)
+                    .then(self.all_items[a].0.cmp(&self.all_items[b].0)));
+            }
+            PickerSort::NameAsc => {
+                indices.sort_by(|&a, &b| self.all_items[a].0.cmp(&self.all_items[b].0));
+            }
+        }
+
+        self.filtered_indices = indices;
         self.cursor = 0;
         let sel = if self.filtered_indices.is_empty() { None } else { Some(0) };
         self.list_state.select(sel);
@@ -105,6 +195,21 @@ impl GenrePickerState {
         if self.filtered_indices.is_empty() { return; }
         self.cursor = self.cursor.saturating_sub(1);
         self.list_state.select(Some(self.cursor));
+    }
+
+    pub fn jump_top(&mut self) {
+        if !self.filtered_indices.is_empty() {
+            self.cursor = 0;
+            self.list_state.select(Some(0));
+        }
+    }
+
+    pub fn jump_bottom(&mut self) {
+        let len = self.filtered_indices.len();
+        if len > 0 {
+            self.cursor = len - 1;
+            self.list_state.select(Some(self.cursor));
+        }
     }
 
     pub fn toggle_current(&mut self) {
@@ -184,6 +289,8 @@ pub struct UiState {
     pub metadata_map: HashMap<u32, GameMetadata>,
     /// State for the genre/tag picker modal (populated when Mode::GenrePicker is entered)
     pub genre_picker: Option<GenrePickerState>,
+    /// Cursor position in the sort picker modal (index into SortOrder::all())
+    pub sort_picker_cursor: usize,
     pub last_error: Option<String>,
     /// Accumulator for search input
     pub search_input: String,
@@ -223,6 +330,7 @@ impl UiState {
             metadata_progress: None,
             metadata_map: HashMap::new(),
             genre_picker: None,
+            sort_picker_cursor: 0,
             last_error: None,
             search_input: String::new(),
             auth_input: String::new(),
@@ -330,6 +438,8 @@ impl UiState {
             }
             SortOrder::NameAsc => items.sort_by(|a, b| a.human_name().cmp(b.human_name())),
             SortOrder::NameDesc => items.sort_by(|a, b| b.human_name().cmp(a.human_name())),
+            SortOrder::BundleAsc => items.sort_by(|a, b| a.bundle_name().cmp(b.bundle_name()).then(a.human_name().cmp(b.human_name()))),
+            SortOrder::BundleDesc => items.sort_by(|a, b| b.bundle_name().cmp(a.bundle_name()).then(a.human_name().cmp(b.human_name()))),
             SortOrder::PlatformAsc => items.sort_by(|a, b| a.platform_label().cmp(b.platform_label())),
             SortOrder::ExpiryAsc => {
                 items.sort_by(|a, b| {

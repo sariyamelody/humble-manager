@@ -8,7 +8,7 @@ use super::{
         detail_panel::DetailPanel,
         filter_bar::FilterBar,
         key_table::KeyTable,
-        modal::{AuthModal, ErrorModal, ExportModal, GenrePickerModal, SyncPromptModal},
+        modal::{AuthModal, ErrorModal, ExportModal, GenrePickerModal, SortPickerModal, SyncPromptModal},
         status_bar::StatusBar,
     },
     state::{Mode, UiState},
@@ -59,6 +59,9 @@ pub fn render(frame: &mut Frame, state: &mut UiState) {
         }
         Mode::GenrePicker => {
             frame.render_widget(GenrePickerModal { state }, area);
+        }
+        Mode::SortPicker => {
+            frame.render_widget(SortPickerModal { state }, area);
         }
         _ => {}
     }

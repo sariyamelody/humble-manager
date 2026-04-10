@@ -20,7 +20,7 @@ impl<'a> Widget for StatusBar<'a> {
             Mode::Auth => Span::styled("  AUTH  ", Style::default().fg(Color::Black).bg(Color::Red).add_modifier(Modifier::BOLD)),
             Mode::ExportPrompt => Span::styled(" EXPORT ", Style::default().fg(Color::Black).bg(Color::Magenta).add_modifier(Modifier::BOLD)),
             Mode::Error => Span::styled("  ERROR ", Style::default().fg(Color::Black).bg(Color::Red).add_modifier(Modifier::BOLD)),
-            Mode::SyncPrompt | Mode::GenrePicker => Span::styled(" NORMAL ", Style::default().fg(Color::Black).bg(Color::Green).add_modifier(Modifier::BOLD)),
+            Mode::SyncPrompt | Mode::GenrePicker | Mode::SortPicker => Span::styled(" NORMAL ", Style::default().fg(Color::Black).bg(Color::Green).add_modifier(Modifier::BOLD)),
 
         };
 
@@ -53,7 +53,7 @@ impl<'a> Widget for StatusBar<'a> {
         };
 
         let hint = Span::styled(
-            " j/k:move  /:search  f:status  s:sort  t:tags  c:source  e:export  r:sync  R:enrich  q:quit",
+            " j/k:move  /:search  f:status  s:sort  S:sort-pick  t:tags  c:source  e:export  r:sync  R:enrich  q:quit",
             Style::default().fg(Color::DarkGray),
         );
 

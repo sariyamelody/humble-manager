@@ -54,6 +54,7 @@ humble-manager
 | `/` | Search (live fuzzy filter) |
 | `f` | Cycle status filter (All → Unredeemed → Redeemed) |
 | `s` | Cycle sort order |
+| `S` | Open sort order picker |
 | `t` | Open genre/tag filter picker |
 | `c` | Cycle source (All → Keys → Choice) |
 | `o` | Open Humble download / claim page in browser |
@@ -87,11 +88,14 @@ Press `t` to open the genre and tag picker. It shows every tag and genre across 
 
 | Key | Action |
 |-----|--------|
-| `j` / `k` | Move up/down |
+| `j` / `k` or `↓` / `↑` | Move up/down |
+| `g` / `G` | Jump to top / bottom |
 | `Space` | Toggle the highlighted tag |
-| Type | Filter the list by name |
-| `Enter` | Apply selected tags and close |
-| `Esc` | Close without changing the filter |
+| `/` | Enter search mode |
+| `s` | Cycle sort order (count↓ / name A-Z) |
+| `f` | Cycle type filter (All → Genres → Tags) |
+| `Enter` | Apply selected tags and close (in navigate mode) / exit search mode |
+| `Esc` | Clear search query if present, otherwise close without changing filter |
 | `Ctrl+c` | Clear all selected tags |
 
 Active tag filters are shown in the filter bar. A game must match **at least one** selected tag to be shown. Games without enrichment metadata are hidden while a tag filter is active.

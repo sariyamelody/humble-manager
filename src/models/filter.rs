@@ -32,6 +32,8 @@ pub enum SortOrder {
     PurchaseDateAsc,
     NameAsc,
     NameDesc,
+    BundleAsc,
+    BundleDesc,
     ExpiryAsc,
     PlatformAsc,
     MetacriticDesc,
@@ -39,12 +41,30 @@ pub enum SortOrder {
 }
 
 impl SortOrder {
+    pub fn all() -> &'static [SortOrder] {
+        use SortOrder::*;
+        &[
+            PurchaseDateDesc,
+            PurchaseDateAsc,
+            NameAsc,
+            NameDesc,
+            BundleAsc,
+            BundleDesc,
+            ExpiryAsc,
+            PlatformAsc,
+            MetacriticDesc,
+            UserRatingDesc,
+        ]
+    }
+
     pub fn next(&self) -> Self {
         match self {
             SortOrder::PurchaseDateDesc => SortOrder::PurchaseDateAsc,
             SortOrder::PurchaseDateAsc => SortOrder::NameAsc,
             SortOrder::NameAsc => SortOrder::NameDesc,
-            SortOrder::NameDesc => SortOrder::ExpiryAsc,
+            SortOrder::NameDesc => SortOrder::BundleAsc,
+            SortOrder::BundleAsc => SortOrder::BundleDesc,
+            SortOrder::BundleDesc => SortOrder::ExpiryAsc,
             SortOrder::ExpiryAsc => SortOrder::PlatformAsc,
             SortOrder::PlatformAsc => SortOrder::MetacriticDesc,
             SortOrder::MetacriticDesc => SortOrder::UserRatingDesc,
@@ -58,6 +78,8 @@ impl SortOrder {
             SortOrder::PurchaseDateAsc => "Purchase↑",
             SortOrder::NameAsc => "Name A-Z",
             SortOrder::NameDesc => "Name Z-A",
+            SortOrder::BundleAsc => "Bundle A-Z",
+            SortOrder::BundleDesc => "Bundle Z-A",
             SortOrder::ExpiryAsc => "Expiry↑",
             SortOrder::PlatformAsc => "Platform",
             SortOrder::MetacriticDesc => "Metacritic↓",
