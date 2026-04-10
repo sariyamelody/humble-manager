@@ -2,6 +2,8 @@
 
 A terminal UI for browsing, filtering, and managing your Humble Bundle game keys and Choice picks.
 
+![Screenshot of humble-manager TUI showing a list of games with filter and detail panels](assets/screenshot.png)
+
 ![Rust](https://img.shields.io/badge/rust-2021-orange)
 
 ## Features
