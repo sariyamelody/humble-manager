@@ -268,6 +268,14 @@ impl ListItem {
     pub fn is_choice(&self) -> bool {
         matches!(self, ListItem::Choice(_))
     }
+
+    /// A stable unique identifier for this item, used to preserve cursor position across sorts.
+    fn stable_id(&self) -> &str {
+        match self {
+            ListItem::Key(k) => &k.tpkd_machine_name,
+            ListItem::Choice(p) => &p.machine_name,
+        }
+    }
 }
 
 pub struct UiState {
@@ -342,6 +350,11 @@ impl UiState {
 
     /// Rebuild the `visible` list from all_keys + all_picks applying current filters.
     pub fn apply_filters(&mut self) {
+        let selected_id: Option<String> = self
+            .table_state
+            .selected()
+            .and_then(|i| self.visible.get(i))
+            .map(|item| item.stable_id().to_owned());
         let query = self.filter.search_query.trim().to_lowercase();
 
         let mut items: Vec<ListItem> = vec![];
@@ -487,13 +500,21 @@ impl UiState {
 
         self.visible = items;
 
-        // Keep selection in bounds
         let len = self.visible.len();
         if len == 0 {
             self.table_state.select(None);
         } else {
-            let current = self.table_state.selected().unwrap_or(0);
-            self.table_state.select(Some(current.min(len - 1)));
+            // Try to keep the cursor on the same game after a sort/filter change.
+            let new_pos = selected_id
+                .as_deref()
+                .and_then(|id| self.visible.iter().position(|item| item.stable_id() == id));
+            match new_pos {
+                Some(pos) => self.table_state.select(Some(pos)),
+                None => {
+                    let current = self.table_state.selected().unwrap_or(0);
+                    self.table_state.select(Some(current.min(len - 1)));
+                }
+            }
         }
     }
 
