@@ -3,7 +3,7 @@ use crossterm::event::{Event, KeyCode, KeyModifiers};
 
 use crate::tui::{
     app_event::{AppEvent, Cmd},
-    state::{FilterFocus, Mode, UiState},
+    state::{Mode, UiState},
 };
 use crate::models::filter::SourceFilter;
 
@@ -96,7 +96,6 @@ fn handle_input(state: &mut UiState, event: Event) -> Option<Cmd> {
     match &state.mode {
         Mode::Auth => handle_auth_input(state, key),
         Mode::Search => handle_search_input(state, key),
-        Mode::Filter => handle_filter_input(state, key),
         Mode::ExportPrompt => handle_export_input(state, key),
         Mode::Error => {
             // Any key dismisses the error
@@ -139,8 +138,14 @@ fn handle_normal_input(state: &mut UiState, key: crossterm::event::KeyEvent) -> 
             None
         }
 
+        // Cycle status filter: All → Unredeemed → Redeemed → All
         (KeyModifiers::NONE, KeyCode::Char('f')) => {
-            state.mode = Mode::Filter;
+            state.filter.redeem_status = match &state.filter.redeem_status {
+                None => Some(crate::models::key::RedeemStatus::Unredeemed),
+                Some(crate::models::key::RedeemStatus::Unredeemed) => Some(crate::models::key::RedeemStatus::Redeemed),
+                Some(_) => None,
+            };
+            state.apply_filters();
             None
         }
 
@@ -240,47 +245,6 @@ fn handle_search_input(state: &mut UiState, key: crossterm::event::KeyEvent) -> 
     None
 }
 
-fn handle_filter_input(state: &mut UiState, key: crossterm::event::KeyEvent) -> Option<Cmd> {
-    match key.code {
-        KeyCode::Esc => {
-            state.mode = Mode::Normal;
-        }
-        KeyCode::Tab => {
-            // Cycle filter groups
-            state.filter_focus = match state.filter_focus {
-                FilterFocus::Source => FilterFocus::Status,
-                FilterFocus::Status => FilterFocus::Sort,
-                FilterFocus::Sort => FilterFocus::Source,
-                FilterFocus::Platform(_) => FilterFocus::Source,
-            };
-        }
-        KeyCode::Char(' ') | KeyCode::Enter => {
-            match &state.filter_focus {
-                FilterFocus::Source => {
-                    let next = state.filter.source.clone().cycle();
-                    state.filter.source = next;
-                    state.apply_filters();
-                }
-                FilterFocus::Status => {
-                    state.filter.redeem_status = match &state.filter.redeem_status {
-                        None => Some(crate::models::key::RedeemStatus::Unredeemed),
-                        Some(crate::models::key::RedeemStatus::Unredeemed) => Some(crate::models::key::RedeemStatus::Redeemed),
-                        Some(crate::models::key::RedeemStatus::Redeemed) => None,
-                        _ => None,
-                    };
-                    state.apply_filters();
-                }
-                FilterFocus::Sort => {
-                    state.filter.sort = state.filter.sort.next();
-                    state.apply_filters();
-                }
-                FilterFocus::Platform(_) => {}
-            }
-        }
-        _ => {}
-    }
-    None
-}
 
 fn handle_auth_input(state: &mut UiState, key: crossterm::event::KeyEvent) -> Option<Cmd> {
     match key.code {

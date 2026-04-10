@@ -13,8 +13,6 @@ pub enum Mode {
     Normal,
     /// Typing a search query
     Search,
-    /// Cycling through filter chips
-    Filter,
     /// Auth modal: paste session cookie
     Auth,
     /// Export path input
@@ -92,35 +90,11 @@ pub struct UiState {
     pub auth_input_visible: bool,
     /// Export path input
     pub export_input: String,
-    /// Which filter chip is focused in Filter mode
-    pub filter_focus: FilterFocus,
     /// Message shown in SyncPrompt modal (e.g. "3 days ago" or "never")
     pub sync_prompt_msg: String,
     matcher: SkimMatcherV2,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FilterFocus {
-    Platform(PlatformChip),
-    Status,
-    Source,
-    Sort,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Copy)]
-pub enum PlatformChip {
-    All,
-    Steam,
-    Gog,
-    DrmFree,
-    Other,
-}
-
-impl Default for FilterFocus {
-    fn default() -> Self {
-        FilterFocus::Source
-    }
-}
 
 impl UiState {
     pub fn new(default_sort: &str, show_redeemed: bool) -> Self {
@@ -149,7 +123,6 @@ impl UiState {
             auth_input: String::new(),
             auth_input_visible: false,
             export_input: String::new(),
-            filter_focus: FilterFocus::default(),
             sync_prompt_msg: String::new(),
             matcher: SkimMatcherV2::default(),
         }
