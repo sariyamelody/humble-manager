@@ -171,6 +171,10 @@ impl UiState {
                 if claimed.contains(pick.machine_name.as_str()) {
                     continue;
                 }
+                // Choice picks are unclaimed by definition — hide them when filtering to Redeemed only
+                if matches!(&self.filter.redeem_status, Some(s) if matches!(s, RedeemStatus::Redeemed)) {
+                    continue;
+                }
                 if !self.filter.show_expired && pick.is_expired {
                     continue;
                 }
