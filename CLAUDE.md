@@ -25,11 +25,33 @@ Single-crate Rust binary. No workspace.
 - **Auth**: Cookie `_simpleauth_sess=<value>`, header `X-Requested-By: hb_android_app`
 - **Orders list**: `GET /api/v1/user/order` → `[{"gamekey": "..."}]`
 - **Order detail**: `GET /api/v1/order/{gamekey}?all_tpkds=true` — the `?all_tpkds=true` param is **required** or `tpkd_dict` is absent from the response
-- **`created` field**: naive datetime, no timezone — `"2016-07-22T22:59:01.787060"`. Parse with `%Y-%m-%dT%H:%M:%S%.f`, assume UTC.
 - **Choice picks** (current month): `GET /membership/home` → parse `<script id="webpack-subscriber-hub-data">`
 - **Choice picks** (past months): `GET /membership/{choice_url}` → parse `<script id="webpack-monthly-product-data">` (different script tag ID, same JSON structure)
-- **Discovering past Choice months**: Order detail for subscription orders has `product.choice_url` (e.g. `"april-2025"`) when `product.category == "subscriptioncontent"`
+- **Subscription orders**: identified by `product.category == "subscriptioncontent"`. Have `product.choice_url` (e.g. `"april-2025"`) pointing to the membership page. DB stores machine names with underscores (`"april_2025_choice"`); URL slug uses hyphens.
+- **`created` field**: naive datetime, no timezone — `"2016-07-22T22:59:01.787060"`. Parse with `%Y-%m-%dT%H:%M:%S%.f`, assume UTC.
+- **Choice expiry dates**: also naive, no fractional seconds — `"2027-05-05T17:00:00"`. Parse with `%Y-%m-%dT%H:%M:%S`.
 - **Key reveal endpoint**: Not yet discovered. Post-MVP.
+
+## Keybindings (Normal mode)
+
+| Key | Action |
+|-----|--------|
+| `j`/`k`, `↑`/`↓` | Move up / down |
+| `g` / `G` | Jump to top / bottom |
+| `Ctrl+d` / `Ctrl+u`, `PgDn`/`PgUp` | Page down / up |
+| `/` | Search (live fuzzy match) |
+| `f` | Cycle status filter: All → Unredeemed → Redeemed |
+| `c` | Cycle source: All → Choice → Keys |
+| `s` | Cycle sort order |
+| `o` | Open in browser (Humble download page for keys; membership page for picks) |
+| `y` | Copy revealed key value to clipboard |
+| `r` | Start a full sync |
+| `e` | Export current view to CSV |
+| `q` / `Ctrl+c` | Quit |
+
+## Event loop
+
+The render loop blocks on the first event then drains all queued events with `try_recv()` before the next draw. This prevents sync floods (345 concurrent `OrderLoaded` events) from causing 345 full redraws and freezing input.
 
 ## Session cookie for testing
 
