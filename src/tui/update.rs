@@ -155,11 +155,20 @@ fn handle_normal_input(state: &mut UiState, key: crossterm::event::KeyEvent) -> 
             if let Some(item) = state.selected_item() {
                 let url = match item {
                     crate::tui::state::ListItem::Key(k) => {
-                        k.steam_app_id
-                            .map(|id| format!("https://store.steampowered.com/app/{}", id))
+                        // Humble download page is where keys are revealed/redeemed
+                        Some(format!(
+                            "https://www.humblebundle.com/downloads?key={}",
+                            k.bundle_machine_name
+                        ))
                     }
-                    crate::tui::state::ListItem::Choice(_) => {
-                        Some("https://www.humblebundle.com/membership/home".to_string())
+                    crate::tui::state::ListItem::Choice(p) => {
+                        // Derive URL slug from choice_month:
+                        // "april_2025_choice" → strip "_choice" → replace "_" with "-" → "april-2025"
+                        let slug = p.choice_month
+                            .strip_suffix("_choice")
+                            .unwrap_or(&p.choice_month)
+                            .replace('_', "-");
+                        Some(format!("https://www.humblebundle.com/membership/{}", slug))
                     }
                 };
                 if let Some(url) = url {
