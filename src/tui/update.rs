@@ -27,7 +27,7 @@ pub fn update(state: &mut UiState, event: AppEvent) -> Option<Cmd> {
             None
         }
 
-        AppEvent::OrderLoaded { bundle, keys } => {
+        AppEvent::OrderLoaded { keys } => {
             // Merge new keys into all_keys (replace existing by tpkd_machine_name)
             for key in keys {
                 if let Some(existing) = state.all_keys.iter_mut()
@@ -288,17 +288,3 @@ fn handle_export_input(state: &mut UiState, key: crossterm::event::KeyEvent) -> 
     None
 }
 
-// Extension for SourceFilter cycling
-trait Cycle: Sized {
-    fn cycle(self) -> Self;
-}
-
-impl Cycle for SourceFilter {
-    fn cycle(self) -> Self {
-        match self {
-            SourceFilter::All => SourceFilter::Keys,
-            SourceFilter::Keys => SourceFilter::Choice,
-            SourceFilter::Choice => SourceFilter::All,
-        }
-    }
-}

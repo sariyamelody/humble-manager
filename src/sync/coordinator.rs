@@ -6,7 +6,7 @@ use crate::{
     api::{
         client::HumbleClient,
         humble::{fetch_order, fetch_order_refs},
-        humble_choice::{fetch_choice_picks_for_url, fetch_current_choice_picks},
+        humble_choice::fetch_choice_picks_for_url,
     },
     config::Config,
     db::Db,
@@ -119,7 +119,7 @@ async fn run_full_sync(config: Config, db: Db, tx: mpsc::Sender<AppEvent>) {
                             warn!("Failed to upsert key {}: {}", key.tpkd_machine_name, e);
                         }
                     }
-                    let _ = tx.send(AppEvent::OrderLoaded { bundle, keys }).await;
+                    let _ = tx.send(AppEvent::OrderLoaded { keys }).await;
 
                     if let Some(slug) = choice_url {
                         fetch_and_store_choice(&client, &slug, &db, &tx).await;

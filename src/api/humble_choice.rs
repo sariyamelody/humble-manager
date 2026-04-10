@@ -23,8 +23,6 @@ struct ContentChoiceOptions {
     content_choice_data: ContentChoiceData,
     #[serde(rename = "productMachineName", default)]
     product_machine_name: String,
-    #[serde(rename = "productUrlPath", default)]
-    product_url_path: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -58,13 +56,6 @@ struct ChoiceTpkd {
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
-
-/// Fetch the current active Humble Choice month (/membership/home).
-pub async fn fetch_current_choice_picks(
-    client: &HumbleClient,
-) -> Result<(String, Vec<ChoicePick>)> {
-    fetch_choice_picks_for_url(client, "home").await
-}
 
 /// Fetch picks for a specific past Choice month.
 /// `url_slug` is the `choice_url` from the order's product, e.g. `"april-2025"`.

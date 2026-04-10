@@ -1,11 +1,10 @@
-use std::sync::Arc;
 use anyhow::{Context, Result};
 use rusqlite::{Connection, params};
-use tokio::sync::{Mutex, oneshot};
-use chrono::{DateTime, Utc, TimeZone};
+use tokio::sync::oneshot;
+use chrono::{Utc, TimeZone};
 
 use crate::models::{
-    bundle::{Bundle, BundleType},
+    bundle::Bundle,
     choice::ChoicePick,
     key::{GameKey, Platform, RedeemStatus},
 };
@@ -19,8 +18,6 @@ pub enum DbMsg {
     UpsertChoicePick(ChoicePick, oneshot::Sender<Result<()>>),
     LoadAllKeys(oneshot::Sender<Result<Vec<GameKey>>>),
     LoadAllChoicePicks(oneshot::Sender<Result<Vec<ChoicePick>>>),
-    LoadAllBundles(oneshot::Sender<Result<Vec<Bundle>>>),
-    KnownGamekeyMachineNames(oneshot::Sender<Result<Vec<String>>>),
     UpdateSyncState { resource: String, status: String, error: Option<String>, sender: oneshot::Sender<Result<()>> },
     LoadSyncState { resource: String, sender: oneshot::Sender<Result<Option<chrono::DateTime<Utc>>>> },
 }
@@ -87,18 +84,6 @@ impl Db {
         rx.await.context("db actor gone")?
     }
 
-    pub async fn load_all_bundles(&self) -> Result<Vec<Bundle>> {
-        let (tx, rx) = oneshot::channel();
-        self.tx.send(DbMsg::LoadAllBundles(tx)).await.ok();
-        rx.await.context("db actor gone")?
-    }
-
-    pub async fn known_gamekey_machine_names(&self) -> Result<Vec<String>> {
-        let (tx, rx) = oneshot::channel();
-        self.tx.send(DbMsg::KnownGamekeyMachineNames(tx)).await.ok();
-        rx.await.context("db actor gone")?
-    }
-
     pub async fn load_sync_state(&self, resource: String) -> Result<Option<chrono::DateTime<Utc>>> {
         let (tx, rx) = oneshot::channel();
         self.tx.send(DbMsg::LoadSyncState { resource, sender: tx }).await.ok();
@@ -119,8 +104,6 @@ fn handle_msg(conn: &Connection, msg: DbMsg) {
         DbMsg::UpsertChoicePick(p, tx) => { let _ = tx.send(upsert_choice_pick(conn, &p)); }
         DbMsg::LoadAllKeys(tx) => { let _ = tx.send(load_all_keys(conn)); }
         DbMsg::LoadAllChoicePicks(tx) => { let _ = tx.send(load_all_choice_picks(conn)); }
-        DbMsg::LoadAllBundles(tx) => { let _ = tx.send(load_all_bundles(conn)); }
-        DbMsg::KnownGamekeyMachineNames(tx) => { let _ = tx.send(known_gamekey_machine_names(conn)); }
         DbMsg::UpdateSyncState { resource, status, error, sender } => {
             let _ = sender.send(update_sync_state(conn, &resource, &status, error.as_deref()));
         }
@@ -339,44 +322,6 @@ fn load_all_choice_picks(conn: &Connection) -> Result<Vec<ChoicePick>> {
         });
     }
     Ok(picks)
-}
-
-fn load_all_bundles(conn: &Connection) -> Result<Vec<Bundle>> {
-    let mut stmt = conn.prepare(
-        "SELECT machine_name, human_name, product_machine_name, purchased_at, bundle_type, cached_at
-         FROM bundles ORDER BY purchased_at DESC",
-    )?;
-
-    let rows = stmt.query_map([], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, String>(2)?,
-            row.get::<_, i64>(3)?,
-            row.get::<_, String>(4)?,
-            row.get::<_, i64>(5)?,
-        ))
-    })?;
-
-    let mut bundles = Vec::new();
-    for row in rows {
-        let (machine_name, human_name, product_machine_name, purchased_ts, bundle_type_str, cached_ts) = row?;
-        bundles.push(Bundle {
-            machine_name,
-            human_name,
-            product_machine_name,
-            purchased_at: Utc.timestamp_opt(purchased_ts, 0).single().unwrap_or_default(),
-            bundle_type: BundleType::from_str(&bundle_type_str),
-            cached_at: Utc.timestamp_opt(cached_ts, 0).single().unwrap_or_default(),
-        });
-    }
-    Ok(bundles)
-}
-
-fn known_gamekey_machine_names(conn: &Connection) -> Result<Vec<String>> {
-    let mut stmt = conn.prepare("SELECT tpkd_machine_name FROM game_keys")?;
-    let names: Result<Vec<String>, _> = stmt.query_map([], |row| row.get(0))?.collect();
-    Ok(names?)
 }
 
 fn load_sync_state(conn: &Connection, resource: &str) -> Result<Option<chrono::DateTime<Utc>>> {

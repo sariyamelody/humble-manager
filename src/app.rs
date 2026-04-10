@@ -56,7 +56,7 @@ pub async fn run() -> Result<()> {
     terminal::install_panic_hook();
     let mut terminal = terminal::init()?;
 
-    let result = run_loop(&mut terminal, &mut state, &mut event_rx, &cmd_tx, &config, &db).await;
+    let result = run_loop(&mut terminal, &mut state, &mut event_rx, &cmd_tx, &config).await;
 
     terminal::restore();
     result
@@ -68,7 +68,6 @@ async fn run_loop(
     event_rx: &mut mpsc::Receiver<AppEvent>,
     cmd_tx: &mpsc::Sender<Cmd>,
     config: &Config,
-    db: &Db,
 ) -> Result<()> {
     loop {
         terminal.draw(|f| render(f, state))?;

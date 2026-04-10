@@ -6,7 +6,6 @@ mod models;
 mod sync;
 mod tui;
 mod export;
-mod error;
 
 use anyhow::Result;
 

@@ -3,7 +3,7 @@ use ratatui::widgets::TableState;
 use crate::models::{
     choice::ChoicePick,
     filter::{FilterState, SortOrder, SourceFilter},
-    key::{GameKey, Platform, RedeemStatus},
+    key::{GameKey, RedeemStatus},
 };
 use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
 
@@ -87,7 +87,6 @@ pub struct UiState {
     pub search_input: String,
     /// Auth input (session cookie)
     pub auth_input: String,
-    pub auth_input_visible: bool,
     /// Export path input
     pub export_input: String,
     /// Message shown in SyncPrompt modal (e.g. "3 days ago" or "never")
@@ -106,7 +105,8 @@ impl UiState {
             _ => SortOrder::PurchaseDateDesc,
         };
         let filter = FilterState {
-            show_expired: false,
+            show_expired: !show_redeemed,
+            sort,
             ..Default::default()
         };
         Self {
@@ -121,7 +121,6 @@ impl UiState {
             last_error: None,
             search_input: String::new(),
             auth_input: String::new(),
-            auth_input_visible: false,
             export_input: String::new(),
             sync_prompt_msg: String::new(),
             matcher: SkimMatcherV2::default(),

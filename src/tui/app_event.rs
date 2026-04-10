@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use crossterm::event::Event;
-use crate::models::{bundle::Bundle, choice::ChoicePick, key::GameKey};
+use crate::models::{choice::ChoicePick, key::GameKey};
 
 #[derive(Debug)]
 pub enum AppEvent {
@@ -11,7 +11,7 @@ pub enum AppEvent {
     /// All order gamekeys fetched from Humble
     OrderRefsLoaded(Vec<String>),
     /// One order's bundle + keys fetched and stored to DB
-    OrderLoaded { bundle: Bundle, keys: Vec<GameKey> },
+    OrderLoaded { keys: Vec<GameKey> },
     /// Current Choice picks fetched
     ChoicePicksLoaded { month: String, picks: Vec<ChoicePick> },
     /// Sync progress update (for status bar)
