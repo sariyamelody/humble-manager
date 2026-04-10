@@ -176,10 +176,8 @@ fn tpk_to_game_key(t: TpkEntry, bundle: &Bundle) -> GameKey {
     let redeem_status = if t.is_expired {
         RedeemStatus::Expired
     } else if is_revealed {
-        // Having revealed the key doesn't mean it's redeemed — keep as Unredeemed
-        // (we can't know from the API whether it was actually redeemed on the platform).
-        // Use Redeemed only if there's no key val and the key type is direct-redeem.
-        RedeemStatus::Unredeemed
+        // Revealed = the user has viewed the key, treat as Redeemed for filtering purposes.
+        RedeemStatus::Redeemed
     } else {
         RedeemStatus::Unredeemed
     };
