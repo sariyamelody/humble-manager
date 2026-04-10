@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::Deserialize;
 use std::time::Duration;
 use uuid::Uuid;
@@ -93,12 +93,18 @@ pub async fn fetch_order(
 
     let detail: OrderDetail = fetch_with_retry(client, &url, gamekey).await?;
 
-    let purchase_date = detail
-        .created
-        .as_deref()
-        .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
-        .map(|dt| dt.with_timezone(&Utc))
-        .unwrap_or_default();
+    // Humble returns naive datetimes like "2016-07-22T22:59:01.787060" (no timezone).
+    // Try RFC3339 first for forward-compat, fall back to naive + assume UTC.
+    let purchase_date = detail.created.as_deref().and_then(|s| {
+        DateTime::parse_from_rfc3339(s)
+            .map(|dt| dt.with_timezone(&Utc))
+            .ok()
+            .or_else(|| {
+                NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f")
+                    .ok()
+                    .map(|ndt| ndt.and_utc())
+            })
+    }).unwrap_or_default();
 
     let choice_url = detail.product.choice_url.clone();
 
