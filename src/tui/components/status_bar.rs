@@ -20,7 +20,7 @@ impl<'a> Widget for StatusBar<'a> {
             Mode::Auth => Span::styled("  AUTH  ", Style::default().fg(Color::Black).bg(Color::Red).add_modifier(Modifier::BOLD)),
             Mode::ExportPrompt => Span::styled(" EXPORT ", Style::default().fg(Color::Black).bg(Color::Magenta).add_modifier(Modifier::BOLD)),
             Mode::Error => Span::styled("  ERROR ", Style::default().fg(Color::Black).bg(Color::Red).add_modifier(Modifier::BOLD)),
-            Mode::SyncPrompt => Span::styled(" NORMAL ", Style::default().fg(Color::Black).bg(Color::Green).add_modifier(Modifier::BOLD)),
+            Mode::SyncPrompt | Mode::GenrePicker => Span::styled(" NORMAL ", Style::default().fg(Color::Black).bg(Color::Green).add_modifier(Modifier::BOLD)),
 
         };
 
@@ -37,12 +37,27 @@ impl<'a> Widget for StatusBar<'a> {
             Span::styled(" Press r to sync ", Style::default().fg(Color::DarkGray))
         };
 
+        let meta_span = if let Some((done, total)) = self.state.metadata_progress {
+            if total == 0 || done < total {
+                let label = if total == 0 {
+                    " Enriching... ".to_string()
+                } else {
+                    format!(" Enriching {}/{} ", done, total)
+                };
+                Span::styled(label, Style::default().fg(Color::Cyan))
+            } else {
+                Span::styled(" Enriched ".to_string(), Style::default().fg(Color::Green))
+            }
+        } else {
+            Span::raw("")
+        };
+
         let hint = Span::styled(
-            " j/k:move  /:search  f:filter  s:sort  c:choice  e:export  r:sync  q:quit ",
+            " j/k:move  /:search  f:status  s:sort  t:tags  c:source  e:export  r:sync  R:enrich  q:quit",
             Style::default().fg(Color::DarkGray),
         );
 
-        let line = Line::from(vec![mode_span, Span::raw(" "), sync_span, hint]);
+        let line = Line::from(vec![mode_span, Span::raw(" "), sync_span, meta_span, hint]);
         Paragraph::new(line).render(area, buf);
     }
 }

@@ -55,6 +55,18 @@ impl<'a> Widget for FilterBar<'a> {
                 format!("[{}]", self.state.filter.sort.label()),
                 Style::default().fg(Color::Yellow),
             ),
+            Span::raw("  "),
+            {
+                let n = self.state.filter.genre_filter.len();
+                if n == 0 {
+                    Span::styled("[t: tags/genres]", Style::default().fg(Color::DarkGray))
+                } else {
+                    Span::styled(
+                        format!("[{} tag{} active]", n, if n == 1 { "" } else { "s" }),
+                        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                    )
+                }
+            },
         ];
 
         let total = self.state.all_keys.len() + self.state.all_picks.len();

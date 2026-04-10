@@ -10,6 +10,8 @@ pub struct FilterState {
     pub sort: SortOrder,
     pub show_expired: bool,
     pub source: SourceFilter,
+    /// Empty = show all genres/tags. Non-empty = item must have at least one matching tag.
+    pub genre_filter: HashSet<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -32,6 +34,8 @@ pub enum SortOrder {
     NameDesc,
     ExpiryAsc,
     PlatformAsc,
+    MetacriticDesc,
+    UserRatingDesc,
 }
 
 impl SortOrder {
@@ -42,7 +46,9 @@ impl SortOrder {
             SortOrder::NameAsc => SortOrder::NameDesc,
             SortOrder::NameDesc => SortOrder::ExpiryAsc,
             SortOrder::ExpiryAsc => SortOrder::PlatformAsc,
-            SortOrder::PlatformAsc => SortOrder::PurchaseDateDesc,
+            SortOrder::PlatformAsc => SortOrder::MetacriticDesc,
+            SortOrder::MetacriticDesc => SortOrder::UserRatingDesc,
+            SortOrder::UserRatingDesc => SortOrder::PurchaseDateDesc,
         }
     }
 
@@ -54,6 +60,8 @@ impl SortOrder {
             SortOrder::NameDesc => "Name Z-A",
             SortOrder::ExpiryAsc => "Expiry↑",
             SortOrder::PlatformAsc => "Platform",
+            SortOrder::MetacriticDesc => "Metacritic↓",
+            SortOrder::UserRatingDesc => "User%↓",
         }
     }
 }

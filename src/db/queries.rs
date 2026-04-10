@@ -7,6 +7,7 @@ use crate::models::{
     bundle::Bundle,
     choice::ChoicePick,
     key::{GameKey, Platform, RedeemStatus},
+    metadata::GameMetadata,
 };
 
 use super::migrations;
@@ -20,6 +21,8 @@ pub enum DbMsg {
     LoadAllChoicePicks(oneshot::Sender<Result<Vec<ChoicePick>>>),
     UpdateSyncState { resource: String, status: String, error: Option<String>, sender: oneshot::Sender<Result<()>> },
     LoadSyncState { resource: String, sender: oneshot::Sender<Result<Option<chrono::DateTime<Utc>>>> },
+    UpsertGameMetadata(GameMetadata, oneshot::Sender<Result<()>>),
+    LoadAllGameMetadata(oneshot::Sender<Result<Vec<GameMetadata>>>),
 }
 
 /// Wraps the SQLite connection; all access goes through `send()`.
@@ -95,6 +98,18 @@ impl Db {
         self.tx.send(DbMsg::UpdateSyncState { resource, status, error, sender: tx }).await.ok();
         rx.await.context("db actor gone")?
     }
+
+    pub async fn upsert_game_metadata(&self, meta: GameMetadata) -> Result<()> {
+        let (tx, rx) = oneshot::channel();
+        self.tx.send(DbMsg::UpsertGameMetadata(meta, tx)).await.ok();
+        rx.await.context("db actor gone")?
+    }
+
+    pub async fn load_all_game_metadata(&self) -> Result<Vec<GameMetadata>> {
+        let (tx, rx) = oneshot::channel();
+        self.tx.send(DbMsg::LoadAllGameMetadata(tx)).await.ok();
+        rx.await.context("db actor gone")?
+    }
 }
 
 fn handle_msg(conn: &Connection, msg: DbMsg) {
@@ -110,6 +125,8 @@ fn handle_msg(conn: &Connection, msg: DbMsg) {
         DbMsg::LoadSyncState { resource, sender } => {
             let _ = sender.send(load_sync_state(conn, &resource));
         }
+        DbMsg::UpsertGameMetadata(meta, tx) => { let _ = tx.send(upsert_game_metadata(conn, &meta)); }
+        DbMsg::LoadAllGameMetadata(tx) => { let _ = tx.send(load_all_game_metadata(conn)); }
     }
 }
 
@@ -332,6 +349,127 @@ fn load_sync_state(conn: &Connection, resource: &str) -> Result<Option<chrono::D
     )?;
     let ts: Option<i64> = stmt.query_row(params![resource], |row| row.get(0)).ok();
     Ok(ts.and_then(|t| Utc.timestamp_opt(t, 0).single()))
+}
+
+fn upsert_game_metadata(conn: &Connection, m: &GameMetadata) -> Result<()> {
+    // Write scalar fields to game_metadata (the old JSON tag columns are left at their
+    // default '[]' — tags/genres now live exclusively in game_tags).
+    conn.execute(
+        "INSERT INTO game_metadata
+            (steam_app_id, metacritic_score, steam_user_rating, igdb_id, igdb_rating, steam_deck_compat, enriched_at)
+         VALUES (?1,?2,?3,?4,?5,?6,?7)
+         ON CONFLICT(steam_app_id) DO UPDATE SET
+           metacritic_score  = excluded.metacritic_score,
+           steam_user_rating = excluded.steam_user_rating,
+           igdb_id           = excluded.igdb_id,
+           igdb_rating       = excluded.igdb_rating,
+           steam_deck_compat = excluded.steam_deck_compat,
+           enriched_at       = excluded.enriched_at",
+        params![
+            m.steam_app_id,
+            m.metacritic_score,
+            m.steam_user_rating,
+            m.igdb_id,
+            m.igdb_rating,
+            m.steam_deck_compat.as_ref().map(|d| d.as_i64()),
+            m.enriched_at.timestamp(),
+        ],
+    )?;
+
+    // Replace all tags for this app atomically
+    conn.execute("DELETE FROM game_tags WHERE steam_app_id = ?1", params![m.steam_app_id])?;
+
+    for genre in &m.steam_genres {
+        conn.execute(
+            "INSERT OR IGNORE INTO game_tags (steam_app_id, tag, source, vote_rank) VALUES (?1,?2,'steam_genre',NULL)",
+            params![m.steam_app_id, genre],
+        )?;
+    }
+    for (rank, tag) in m.steam_tags.iter().enumerate() {
+        conn.execute(
+            "INSERT OR IGNORE INTO game_tags (steam_app_id, tag, source, vote_rank) VALUES (?1,?2,'steam_tag',?3)",
+            params![m.steam_app_id, tag, (rank + 1) as i64],
+        )?;
+    }
+    for genre in &m.igdb_genres {
+        conn.execute(
+            "INSERT OR IGNORE INTO game_tags (steam_app_id, tag, source, vote_rank) VALUES (?1,?2,'igdb_genre',NULL)",
+            params![m.steam_app_id, genre],
+        )?;
+    }
+
+    Ok(())
+}
+
+fn load_all_game_metadata(conn: &Connection) -> Result<Vec<GameMetadata>> {
+    use std::collections::HashMap;
+    use crate::models::metadata::SteamDeckCompat;
+
+    // Load scalar metadata
+    let mut meta_map: HashMap<u32, GameMetadata> = {
+        let mut stmt = conn.prepare(
+            "SELECT steam_app_id, metacritic_score, steam_user_rating, igdb_id, igdb_rating,
+                    steam_deck_compat, enriched_at
+             FROM game_metadata",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, Option<i64>>(1)?,
+                row.get::<_, Option<f64>>(2)?,
+                row.get::<_, Option<i64>>(3)?,
+                row.get::<_, Option<f64>>(4)?,
+                row.get::<_, Option<i64>>(5)?,
+                row.get::<_, i64>(6)?,
+            ))
+        })?;
+        let mut map = HashMap::new();
+        for row in rows {
+            let (app_id, mc, user_rating, igdb_id, igdb_rating, deck_compat, enriched_ts) = row?;
+            map.insert(app_id as u32, GameMetadata {
+                steam_app_id: app_id as u32,
+                steam_tags: vec![],
+                steam_genres: vec![],
+                metacritic_score: mc.map(|v| v as u32),
+                steam_user_rating: user_rating.map(|v| v as f32),
+                igdb_id: igdb_id.map(|v| v as u64),
+                igdb_genres: vec![],
+                igdb_rating,
+                steam_deck_compat: deck_compat.and_then(SteamDeckCompat::from_category),
+                enriched_at: Utc.timestamp_opt(enriched_ts, 0).single().unwrap_or_default(),
+            });
+        }
+        map
+    };
+
+    // Load tags and populate into the map
+    {
+        let mut stmt = conn.prepare(
+            "SELECT steam_app_id, tag, source, vote_rank
+             FROM game_tags
+             ORDER BY steam_app_id, source, COALESCE(vote_rank, 9999)",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+        for row in rows {
+            let (app_id, tag, source) = row?;
+            if let Some(meta) = meta_map.get_mut(&(app_id as u32)) {
+                match source.as_str() {
+                    "steam_genre" => meta.steam_genres.push(tag),
+                    "steam_tag"   => meta.steam_tags.push(tag),
+                    "igdb_genre"  => meta.igdb_genres.push(tag),
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    Ok(meta_map.into_values().collect())
 }
 
 fn update_sync_state(conn: &Connection, resource: &str, status: &str, error: Option<&str>) -> Result<()> {

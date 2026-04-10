@@ -62,6 +62,26 @@ pub fn update(state: &mut UiState, event: AppEvent) -> Option<Cmd> {
             None
         }
 
+        AppEvent::AllMetadataLoaded(items) => {
+            state.metadata_map = items.into_iter().map(|m| (m.steam_app_id, m)).collect();
+            None
+        }
+
+        AppEvent::MetadataEnriched(meta) => {
+            state.metadata_map.insert(meta.steam_app_id, meta);
+            None
+        }
+
+        AppEvent::MetadataProgress { done, total } => {
+            state.metadata_progress = Some((done, total));
+            None
+        }
+
+        AppEvent::MetadataSyncComplete => {
+            // Leave the completed progress visible so the user can see it finished
+            None
+        }
+
         AppEvent::SyncStateLoaded(last_synced) => {
             let stale = match last_synced {
                 None => Some("never synced".to_string()),
@@ -97,6 +117,7 @@ fn handle_input(state: &mut UiState, event: Event) -> Option<Cmd> {
         Mode::Auth => handle_auth_input(state, key),
         Mode::Search => handle_search_input(state, key),
         Mode::ExportPrompt => handle_export_input(state, key),
+        Mode::GenrePicker => { handle_genre_picker_input(state, key); return None; }
         Mode::Error => {
             // Any key dismisses the error
             state.last_error = None;
@@ -227,9 +248,27 @@ fn handle_normal_input(state: &mut UiState, key: crossterm::event::KeyEvent) -> 
             None
         }
 
+        // Open genre/tag picker
+        (KeyModifiers::NONE, KeyCode::Char('t')) => {
+            let picker = crate::tui::state::GenrePickerState::new(
+                &state.metadata_map,
+                &state.filter.genre_filter,
+            );
+            state.genre_picker = Some(picker);
+            state.mode = Mode::GenrePicker;
+            None
+        }
+
         // Refresh / sync
         (KeyModifiers::NONE, KeyCode::Char('r')) => {
             Some(Cmd::StartFullSync)
+        }
+
+        // Metadata enrichment sync (Steam + IGDB)
+        (KeyModifiers::SHIFT, KeyCode::Char('R')) |
+        (KeyModifiers::NONE, KeyCode::Char('R')) => {
+            state.metadata_progress = Some((0, 0));
+            Some(Cmd::StartMetadataSync)
         }
 
         // Export
@@ -290,6 +329,58 @@ fn handle_auth_input(state: &mut UiState, key: crossterm::event::KeyEvent) -> Op
         _ => {}
     }
     None
+}
+
+fn handle_genre_picker_input(state: &mut UiState, key: crossterm::event::KeyEvent) {
+    match (key.modifiers, key.code) {
+        (KeyModifiers::NONE, KeyCode::Esc) => {
+            // Discard pending selection, restore previous filter unchanged
+            state.genre_picker = None;
+            state.mode = Mode::Normal;
+        }
+        (KeyModifiers::NONE, KeyCode::Enter) => {
+            // Apply the pending selection
+            if let Some(picker) = state.genre_picker.take() {
+                state.filter.genre_filter = picker.pending_filter;
+            }
+            state.mode = Mode::Normal;
+            state.apply_filters();
+        }
+        (KeyModifiers::NONE, KeyCode::Char(' ')) => {
+            if let Some(picker) = &mut state.genre_picker {
+                picker.toggle_current();
+            }
+        }
+        (KeyModifiers::NONE, KeyCode::Char('j')) | (KeyModifiers::NONE, KeyCode::Down) => {
+            if let Some(picker) = &mut state.genre_picker {
+                picker.move_down();
+            }
+        }
+        (KeyModifiers::NONE, KeyCode::Char('k')) | (KeyModifiers::NONE, KeyCode::Up) => {
+            if let Some(picker) = &mut state.genre_picker {
+                picker.move_up();
+            }
+        }
+        (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
+            // Clear all pending selections
+            if let Some(picker) = &mut state.genre_picker {
+                picker.pending_filter.clear();
+            }
+        }
+        (KeyModifiers::NONE, KeyCode::Backspace) => {
+            if let Some(picker) = &mut state.genre_picker {
+                picker.search.pop();
+                picker.apply_search();
+            }
+        }
+        (KeyModifiers::NONE, KeyCode::Char(c)) => {
+            if let Some(picker) = &mut state.genre_picker {
+                picker.search.push(c);
+                picker.apply_search();
+            }
+        }
+        _ => {}
+    }
 }
 
 fn handle_export_input(state: &mut UiState, key: crossterm::event::KeyEvent) -> Option<Cmd> {

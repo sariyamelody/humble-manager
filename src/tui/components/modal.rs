@@ -1,9 +1,9 @@
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph, Widget, Wrap},
+    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, StatefulWidget, Widget, Wrap},
 };
 
 use crate::tui::state::UiState;
@@ -157,6 +157,108 @@ impl<'a> Widget for SyncPromptModal<'a> {
         ];
 
         Paragraph::new(lines).render(inner, buf);
+    }
+}
+
+/// Genre/tag picker modal. Scrollable, searchable, multi-select.
+pub struct GenrePickerModal<'a> {
+    pub state: &'a mut UiState,
+}
+
+impl<'a> Widget for GenrePickerModal<'a> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let modal_area = centered_rect(62, 26, area);
+        Clear.render(modal_area, buf);
+
+        let picker = match &mut self.state.genre_picker {
+            Some(p) => p,
+            None => return,
+        };
+
+        let block = Block::default()
+            .title(" Filter by Genre / Tag ")
+            .borders(Borders::ALL)
+            .style(Style::default().bg(Color::DarkGray));
+
+        let inner = block.inner(modal_area);
+        block.render(modal_area, buf);
+
+        // Layout: search bar (3 rows) / list / footer hint (1 row)
+        let layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Min(0),
+                Constraint::Length(1),
+            ])
+            .split(inner);
+
+        // Search input
+        let search_block = Block::default().borders(Borders::BOTTOM);
+        let search_inner = search_block.inner(layout[0]);
+        search_block.render(layout[0], buf);
+        Paragraph::new(Line::from(vec![
+            Span::styled("Search: ", Style::default().fg(Color::Gray)),
+            Span::styled(
+                format!("{}_", picker.search),
+                Style::default().fg(Color::White),
+            ),
+        ])).render(search_inner, buf);
+
+        // Tag list
+        let active_style = Style::default()
+            .fg(Color::Black).bg(Color::Cyan)
+            .add_modifier(Modifier::BOLD);
+
+        let items: Vec<ListItem> = picker.filtered_indices.iter().enumerate().map(|(pos, &idx)| {
+            let (name, count, is_genre) = &picker.all_items[idx];
+            let is_current = pos == picker.cursor;
+            let checked = picker.pending_filter.contains(name);
+
+            // Checkbox: green when selected, dim otherwise
+            let (checkbox, checkbox_style) = if checked {
+                ("[x]", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))
+            } else {
+                ("[ ]", Style::default().fg(Color::DarkGray))
+            };
+
+            // Prefix + name style differs by kind
+            let (prefix, name_style) = if *is_genre {
+                ("◆ ", Style::default().fg(Color::Cyan))
+            } else {
+                ("# ", Style::default().fg(Color::Yellow))
+            };
+
+            // Count always visible; invert on highlighted row for readability
+            let count_style = if is_current {
+                Style::default().fg(Color::Black)
+            } else {
+                Style::default().fg(Color::Gray)
+            };
+
+            ListItem::new(Line::from(vec![
+                Span::styled(format!("{} ", checkbox), checkbox_style),
+                Span::styled(prefix, if is_current { Style::default().fg(Color::Black) } else { name_style }),
+                Span::styled(name.clone(), if is_current { Style::default().fg(Color::Black).add_modifier(Modifier::BOLD) } else { name_style }),
+                Span::styled(format!("  ({})", count), count_style),
+            ]))
+        }).collect();
+
+        let list = List::new(items)
+            .highlight_style(active_style)
+            .highlight_symbol("▶ ");
+
+        StatefulWidget::render(list, layout[1], buf, &mut picker.list_state);
+
+        // Footer
+        let active_count = picker.pending_filter.len();
+        let footer_text = if active_count > 0 {
+            format!(" Space:toggle  Enter:apply ({} active)  Esc:cancel  Ctrl+C:clear all ", active_count)
+        } else {
+            " Space:toggle  Enter:apply  Esc:cancel ".to_string()
+        };
+        Paragraph::new(Span::styled(footer_text, Style::default().fg(Color::DarkGray)))
+            .render(layout[2], buf);
     }
 }
 

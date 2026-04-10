@@ -1,9 +1,11 @@
-use ratatui::widgets::TableState;
+use std::collections::{HashMap, HashSet};
+use ratatui::widgets::{ListState, TableState};
 
 use crate::models::{
     choice::ChoicePick,
     filter::{FilterState, SortOrder, SourceFilter},
     key::{GameKey, RedeemStatus},
+    metadata::GameMetadata,
 };
 use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
 
@@ -21,6 +23,100 @@ pub enum Mode {
     Error,
     /// Suggestion to sync (shown when cache is stale or never synced)
     SyncPrompt,
+    /// Genre/tag picker modal
+    GenrePicker,
+}
+
+/// State for the genre/tag picker modal.
+pub struct GenrePickerState {
+    /// All (name, library_count, is_genre) tuples sorted by count descending.
+    /// is_genre = true when the name appears as a steam_genre or igdb_genre for any library item.
+    pub all_items: Vec<(String, u32, bool)>,
+    /// Indices into all_items that match the current search query
+    pub filtered_indices: Vec<usize>,
+    /// Cursor position within filtered_indices
+    pub cursor: usize,
+    /// Live search query typed in the modal
+    pub search: String,
+    /// Tags selected in this picker session (applied on Enter, discarded on Esc)
+    pub pending_filter: HashSet<String>,
+    pub list_state: ListState,
+}
+
+impl GenrePickerState {
+    pub fn new(
+        metadata_map: &HashMap<u32, crate::models::metadata::GameMetadata>,
+        current_filter: &HashSet<String>,
+    ) -> Self {
+        // Count occurrences and track which names are genres vs user tags.
+        // A name is a genre if it appears as steam_genre or igdb_genre for any item.
+        let mut counts: HashMap<String, u32> = HashMap::new();
+        let mut genre_names: HashSet<String> = HashSet::new();
+        for meta in metadata_map.values() {
+            for tag in &meta.steam_tags {
+                *counts.entry(tag.clone()).or_insert(0) += 1;
+            }
+            for g in meta.steam_genres.iter().chain(meta.igdb_genres.iter()) {
+                *counts.entry(g.clone()).or_insert(0) += 1;
+                genre_names.insert(g.clone());
+            }
+        }
+        let mut all_items: Vec<(String, u32, bool)> = counts
+            .into_iter()
+            .map(|(name, count)| {
+                let is_genre = genre_names.contains(&name);
+                (name, count, is_genre)
+            })
+            .collect();
+        all_items.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+
+        let len = all_items.len();
+        let mut list_state = ListState::default();
+        if len > 0 { list_state.select(Some(0)); }
+
+        Self {
+            filtered_indices: (0..len).collect(),
+            cursor: 0,
+            search: String::new(),
+            pending_filter: current_filter.clone(),
+            all_items,
+            list_state,
+        }
+    }
+
+    pub fn apply_search(&mut self) {
+        let q = self.search.to_lowercase();
+        self.filtered_indices = self.all_items.iter().enumerate()
+            .filter(|(_, (tag, _, _))| q.is_empty() || tag.to_lowercase().contains(&q))
+            .map(|(i, _)| i)
+            .collect();
+        self.cursor = 0;
+        let sel = if self.filtered_indices.is_empty() { None } else { Some(0) };
+        self.list_state.select(sel);
+    }
+
+    pub fn move_down(&mut self) {
+        if self.filtered_indices.is_empty() { return; }
+        self.cursor = (self.cursor + 1).min(self.filtered_indices.len() - 1);
+        self.list_state.select(Some(self.cursor));
+    }
+
+    pub fn move_up(&mut self) {
+        if self.filtered_indices.is_empty() { return; }
+        self.cursor = self.cursor.saturating_sub(1);
+        self.list_state.select(Some(self.cursor));
+    }
+
+    pub fn toggle_current(&mut self) {
+        if let Some(&item_idx) = self.filtered_indices.get(self.cursor) {
+            let tag = self.all_items[item_idx].0.clone();  // .0 = name regardless of tuple size
+            if self.pending_filter.contains(&tag) {
+                self.pending_filter.remove(&tag);
+            } else {
+                self.pending_filter.insert(tag);
+            }
+        }
+    }
 }
 
 /// A unified row that can be either a regular key or a Choice pick
@@ -82,6 +178,12 @@ pub struct UiState {
     /// Sync progress (done/total)
     pub sync_progress: Option<(u32, u32)>,
     pub sync_label: String,
+    /// Metadata enrichment progress (done/total), cleared when complete
+    pub metadata_progress: Option<(u32, u32)>,
+    /// Game metadata keyed by steam_app_id
+    pub metadata_map: HashMap<u32, GameMetadata>,
+    /// State for the genre/tag picker modal (populated when Mode::GenrePicker is entered)
+    pub genre_picker: Option<GenrePickerState>,
     pub last_error: Option<String>,
     /// Accumulator for search input
     pub search_input: String,
@@ -118,6 +220,9 @@ impl UiState {
             table_state: TableState::default(),
             sync_progress: None,
             sync_label: String::new(),
+            metadata_progress: None,
+            metadata_map: HashMap::new(),
+            genre_picker: None,
             last_error: None,
             search_input: String::new(),
             auth_input: String::new(),
@@ -156,6 +261,18 @@ impl UiState {
                         continue;
                     }
                 }
+                if !self.filter.genre_filter.is_empty() {
+                    match key.steam_app_id.and_then(|id| self.metadata_map.get(&id)) {
+                        Some(meta) => {
+                            let hit = meta.steam_tags.iter()
+                                .chain(meta.steam_genres.iter())
+                                .chain(meta.igdb_genres.iter())
+                                .any(|t| self.filter.genre_filter.contains(t));
+                            if !hit { continue; }
+                        }
+                        None => continue,
+                    }
+                }
                 items.push(ListItem::Key(key.clone()));
             }
         }
@@ -187,6 +304,18 @@ impl UiState {
                         continue;
                     }
                 }
+                if !self.filter.genre_filter.is_empty() {
+                    match pick.steam_app_id.and_then(|id| self.metadata_map.get(&id)) {
+                        Some(meta) => {
+                            let hit = meta.steam_tags.iter()
+                                .chain(meta.steam_genres.iter())
+                                .chain(meta.igdb_genres.iter())
+                                .any(|t| self.filter.genre_filter.contains(t));
+                            if !hit { continue; }
+                        }
+                        None => continue,
+                    }
+                }
                 items.push(ListItem::Choice(pick.clone()));
             }
         }
@@ -208,6 +337,36 @@ impl UiState {
                     let b_exp = if let ListItem::Key(k) = b { k.expiry_date } else if let ListItem::Choice(p) = b { p.claim_deadline } else { None };
                     match (a_exp, b_exp) {
                         (Some(a), Some(b)) => a.cmp(&b),
+                        (Some(_), None) => std::cmp::Ordering::Less,
+                        (None, Some(_)) => std::cmp::Ordering::Greater,
+                        (None, None) => std::cmp::Ordering::Equal,
+                    }
+                });
+            }
+            SortOrder::MetacriticDesc => {
+                items.sort_by(|a, b| {
+                    let score = |item: &ListItem| -> Option<u32> {
+                        item_steam_app_id(item)
+                            .and_then(|id| self.metadata_map.get(&id))
+                            .and_then(|m| m.metacritic_score)
+                    };
+                    match (score(a), score(b)) {
+                        (Some(a), Some(b)) => b.cmp(&a),
+                        (Some(_), None) => std::cmp::Ordering::Less,
+                        (None, Some(_)) => std::cmp::Ordering::Greater,
+                        (None, None) => std::cmp::Ordering::Equal,
+                    }
+                });
+            }
+            SortOrder::UserRatingDesc => {
+                items.sort_by(|a, b| {
+                    let rating = |item: &ListItem| -> Option<f32> {
+                        item_steam_app_id(item)
+                            .and_then(|id| self.metadata_map.get(&id))
+                            .and_then(|m| m.steam_user_rating)
+                    };
+                    match (rating(a), rating(b)) {
+                        (Some(a), Some(b)) => b.partial_cmp(&a).unwrap_or(std::cmp::Ordering::Equal),
                         (Some(_), None) => std::cmp::Ordering::Less,
                         (None, Some(_)) => std::cmp::Ordering::Greater,
                         (None, None) => std::cmp::Ordering::Equal,
@@ -270,6 +429,13 @@ impl UiState {
         if self.visible.is_empty() { return; }
         let next = self.table_state.selected().map_or(0, |i| i.saturating_sub(page_size));
         self.table_state.select(Some(next));
+    }
+}
+
+fn item_steam_app_id(item: &ListItem) -> Option<u32> {
+    match item {
+        ListItem::Key(k) => k.steam_app_id,
+        ListItem::Choice(p) => p.steam_app_id,
     }
 }
 
