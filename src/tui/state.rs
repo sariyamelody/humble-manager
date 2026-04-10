@@ -194,18 +194,10 @@ impl UiState {
         // Sort
         match self.filter.sort {
             SortOrder::PurchaseDateDesc => {
-                items.sort_by(|a, b| {
-                    let a_date = if let ListItem::Key(k) = a { k.purchase_date } else { chrono::DateTime::default() };
-                    let b_date = if let ListItem::Key(k) = b { k.purchase_date } else { chrono::DateTime::default() };
-                    b_date.cmp(&a_date)
-                });
+                items.sort_by(|a, b| item_date(b).cmp(&item_date(a)));
             }
             SortOrder::PurchaseDateAsc => {
-                items.sort_by(|a, b| {
-                    let a_date = if let ListItem::Key(k) = a { k.purchase_date } else { chrono::DateTime::default() };
-                    let b_date = if let ListItem::Key(k) = b { k.purchase_date } else { chrono::DateTime::default() };
-                    a_date.cmp(&b_date)
-                });
+                items.sort_by(|a, b| item_date(a).cmp(&item_date(b)));
             }
             SortOrder::NameAsc => items.sort_by(|a, b| a.human_name().cmp(b.human_name())),
             SortOrder::NameDesc => items.sort_by(|a, b| b.human_name().cmp(a.human_name())),
@@ -278,5 +270,12 @@ impl UiState {
         if self.visible.is_empty() { return; }
         let next = self.table_state.selected().map_or(0, |i| i.saturating_sub(page_size));
         self.table_state.select(Some(next));
+    }
+}
+
+fn item_date(item: &ListItem) -> chrono::DateTime<chrono::Utc> {
+    match item {
+        ListItem::Key(k) => k.purchase_date,
+        ListItem::Choice(p) => p.month_date().unwrap_or_default(),
     }
 }

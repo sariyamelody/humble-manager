@@ -27,6 +27,7 @@ impl<'a> Widget for DetailPanel<'a> {
             Some(ListItem::Key(k)) => {
                 let mut lines = vec![
                     field("Bundle", &k.bundle_human_name),
+                    field("Purchased", &k.purchase_date.format("%Y-%m-%d").to_string()),
                     field("Platform", k.platform.display_name()),
                     field("Status", k.redeem_status.as_str()),
                     field("Type", &k.key_type),
@@ -92,8 +93,12 @@ impl<'a> Widget for DetailPanel<'a> {
             }
 
             Some(ListItem::Choice(p)) => {
+                let month_str = p.month_date()
+                    .map(|d| d.format("%Y-%m-%d").to_string())
+                    .unwrap_or_else(|| p.choice_month.clone());
                 let mut lines = vec![
                     field("Month", &p.choice_month),
+                    field("Available", &month_str),
                     field("Platform", p.platform.display_name()),
                     Line::from(vec![
                         label("Status"),
