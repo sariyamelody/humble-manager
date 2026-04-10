@@ -302,7 +302,9 @@ impl<'a> Widget for GenrePickerModal<'a> {
             }
             Line::from(spans)
         };
-        Paragraph::new(footer_line).render(layout[2], buf);
+        Paragraph::new(footer_line)
+            .style(Style::default().bg(Color::Black))
+            .render(layout[2], buf);
     }
 }
 
@@ -369,16 +371,18 @@ impl<'a> Widget for SortPickerModal<'a> {
             hint_key("Enter"), hint_desc(":select  "),
             hint_key("Esc"), hint_desc(":cancel"),
         ]);
-        Paragraph::new(footer_line).render(layout[1], buf);
+        Paragraph::new(footer_line)
+            .style(Style::default().bg(Color::Black))
+            .render(layout[1], buf);
     }
 }
 
 fn hint_key(label: impl Into<String>) -> Span<'static> {
-    Span::styled(label.into(), Style::default().fg(Color::White).add_modifier(Modifier::BOLD))
+    Span::styled(label.into(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
 }
 
 fn hint_desc(label: impl Into<String>) -> Span<'static> {
-    Span::styled(label.into(), Style::default().fg(Color::DarkGray))
+    Span::styled(label.into(), Style::default().fg(Color::Gray))
 }
 
 fn centered_rect(percent_x: u16, height: u16, r: Rect) -> Rect {
