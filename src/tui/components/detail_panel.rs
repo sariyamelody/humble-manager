@@ -82,6 +82,12 @@ impl<'a> Widget for DetailPanel<'a> {
                     lines.push(field("App ID", &app_id.to_string()));
                 }
 
+                lines.push(Line::from(vec![
+                    Span::styled("Press ", Style::default().fg(Color::DarkGray)),
+                    Span::styled("o", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+                    Span::styled(" to open Humble page", Style::default().fg(Color::DarkGray)),
+                ]));
+
                 lines
             }
 
