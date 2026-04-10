@@ -273,21 +273,36 @@ impl<'a> Widget for GenrePickerModal<'a> {
 
         StatefulWidget::render(list, layout[1], buf, &mut picker.list_state);
 
-        // Footer — context-sensitive hints based on sub-mode
+        // Footer — context-sensitive hints based on sub-mode, with keys highlighted
         let active_count = picker.pending_filter.len();
-        let footer_text = if picker.sub_mode == PickerSubMode::Search {
+        let footer_line = if picker.sub_mode == PickerSubMode::Search {
+            let mut spans = vec![hint_key("Enter"), hint_desc(":done  ")];
+            spans.extend([hint_key("Esc"), hint_desc(":back")]);
             if active_count > 0 {
-                format!(" Enter:done  Esc:back  ({} active) ", active_count)
-            } else {
-                " Type to search  Enter:done  Esc:back ".to_string()
+                spans.push(hint_desc(format!("  ({} active)", active_count)));
             }
-        } else if active_count > 0 {
-            format!(" Space:toggle  Enter:apply ({} active)  /:search  s:sort  f:type  Esc:close  Ctrl+C:clear ", active_count)
+            Line::from(spans)
         } else {
-            " Space:toggle  Enter:apply  /:search  s:sort  f:type  Esc:close ".to_string()
+            let mut spans = vec![
+                hint_key("Space"), hint_desc(":toggle  "),
+                hint_key("Enter"), hint_desc(":apply"),
+            ];
+            if active_count > 0 {
+                spans.push(hint_desc(format!(" ({} active)", active_count)));
+            }
+            spans.extend([
+                hint_desc("  "),
+                hint_key("/"), hint_desc(":search  "),
+                hint_key("s"), hint_desc(":sort  "),
+                hint_key("f"), hint_desc(":type  "),
+                hint_key("Esc"), hint_desc(":close"),
+            ]);
+            if active_count > 0 {
+                spans.extend([hint_desc("  "), hint_key("Ctrl+C"), hint_desc(":clear")]);
+            }
+            Line::from(spans)
         };
-        Paragraph::new(Span::styled(footer_text, Style::default().fg(Color::DarkGray)))
-            .render(layout[2], buf);
+        Paragraph::new(footer_line).render(layout[2], buf);
     }
 }
 
@@ -348,11 +363,22 @@ impl<'a> Widget for SortPickerModal<'a> {
 
         StatefulWidget::render(list, layout[0], buf, &mut list_state);
 
-        Paragraph::new(Span::styled(
-            " j/k:move  Enter:select  Esc:cancel ",
-            Style::default().fg(Color::DarkGray),
-        )).render(layout[1], buf);
+        let footer_line = Line::from(vec![
+            hint_key("j/k"), hint_desc(":move  "),
+            hint_key("g/G"), hint_desc(":top/bot  "),
+            hint_key("Enter"), hint_desc(":select  "),
+            hint_key("Esc"), hint_desc(":cancel"),
+        ]);
+        Paragraph::new(footer_line).render(layout[1], buf);
     }
+}
+
+fn hint_key(label: impl Into<String>) -> Span<'static> {
+    Span::styled(label.into(), Style::default().fg(Color::White).add_modifier(Modifier::BOLD))
+}
+
+fn hint_desc(label: impl Into<String>) -> Span<'static> {
+    Span::styled(label.into(), Style::default().fg(Color::DarkGray))
 }
 
 fn centered_rect(percent_x: u16, height: u16, r: Rect) -> Rect {
