@@ -89,6 +89,17 @@ impl<'a> Widget for DetailPanel<'a> {
                     Span::styled(" to open Humble page", Style::default().fg(Color::DarkGray)),
                 ]));
 
+                if k.platform.store_url(&k.human_name, k.steam_app_id).is_some() {
+                    lines.push(Line::from(vec![
+                        Span::styled("Press ", Style::default().fg(Color::DarkGray)),
+                        Span::styled("O", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+                        Span::styled(
+                            format!(" to open {} store page", k.platform.display_name()),
+                            Style::default().fg(Color::DarkGray),
+                        ),
+                    ]));
+                }
+
                 lines
             }
 

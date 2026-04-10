@@ -54,6 +54,7 @@ humble-manager
 | `s` | Cycle sort order |
 | `c` | Cycle source (All → Keys → Choice) |
 | `o` | Open Humble download / claim page in browser |
+| `O` | Open platform store page (Steam, GOG, Epic, etc.) |
 | `y` | Yank revealed key value to clipboard |
 | `r` | Start a full sync |
 | `e` | Export current view to CSV |

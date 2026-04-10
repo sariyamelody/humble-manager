@@ -150,6 +150,16 @@ fn handle_normal_input(state: &mut UiState, key: crossterm::event::KeyEvent) -> 
         }
 
         // Actions on selected item
+        // O — open platform store page (Steam/GOG/Epic/etc.)
+        (KeyModifiers::SHIFT, KeyCode::Char('O')) => {
+            if let Some(crate::tui::state::ListItem::Key(k)) = state.selected_item() {
+                if let Some(url) = k.platform.store_url(&k.human_name, k.steam_app_id) {
+                    let _ = open::that(url);
+                }
+            }
+            None
+        }
+
         (KeyModifiers::NONE, KeyCode::Char('o')) => {
             // Open store / claim page in browser
             if let Some(item) = state.selected_item() {

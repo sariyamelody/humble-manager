@@ -82,6 +82,27 @@ impl Platform {
     }
 }
 
+impl Platform {
+    /// Returns a store search/page URL for this platform given a game name,
+    /// or None for platforms with no useful public store URL.
+    pub fn store_url(&self, name: &str, steam_app_id: Option<u32>) -> Option<String> {
+        let q = urlencoding::encode(name);
+        match self {
+            Platform::Steam => Some(
+                steam_app_id
+                    .map(|id| format!("https://store.steampowered.com/app/{}", id))
+                    .unwrap_or_else(|| format!("https://store.steampowered.com/search/?term={}", q))
+            ),
+            Platform::Gog => Some(format!("https://www.gog.com/en/games?query={}", q)),
+            Platform::EpicGames => Some(format!("https://store.epicgames.com/en-US/browse?q={}", q)),
+            Platform::Ubisoft => Some(format!("https://store.ubisoft.com/en-gb/search?searchText={}", q)),
+            Platform::Itch => Some(format!("https://itch.io/search?q={}", q)),
+            Platform::BattleNet => Some("https://us.battle.net/shop/".to_string()),
+            Platform::DrmFree | Platform::HumbleApp | Platform::Other(_) => None,
+        }
+    }
+}
+
 impl std::fmt::Display for Platform {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.display_name())
