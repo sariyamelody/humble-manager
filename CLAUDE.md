@@ -32,23 +32,6 @@ Single-crate Rust binary. No workspace.
 - **Choice expiry dates**: also naive, no fractional seconds — `"2027-05-05T17:00:00"`. Parse with `%Y-%m-%dT%H:%M:%S`.
 - **Key reveal endpoint**: Not yet discovered. Post-MVP.
 
-## Keybindings (Normal mode)
-
-| Key | Action |
-|-----|--------|
-| `j`/`k`, `↑`/`↓` | Move up / down |
-| `g` / `G` | Jump to top / bottom |
-| `Ctrl+d` / `Ctrl+u`, `PgDn`/`PgUp` | Page down / up |
-| `/` | Search (live fuzzy match) |
-| `f` | Cycle status filter: All → Unredeemed → Redeemed |
-| `c` | Cycle source: All → Choice → Keys |
-| `s` | Cycle sort order |
-| `o` | Open in browser (Humble download page for keys; membership page for picks) |
-| `y` | Copy revealed key value to clipboard |
-| `r` | Start a full sync |
-| `e` | Export current view to CSV |
-| `q` / `Ctrl+c` | Quit |
-
 ## Event loop
 
 The render loop blocks on the first event then drains all queued events with `try_recv()` before the next draw. This prevents sync floods (345 concurrent `OrderLoaded` events) from causing 345 full redraws and freezing input.
