@@ -5,7 +5,7 @@ use crate::tui::{
     app_event::{AppEvent, Cmd},
     state::{Mode, UiState},
 };
-use crate::models::filter::SourceFilter;
+use crate::models::filter::{SortOrder, SourceFilter};
 
 /// Process one event, mutate state, and optionally return a Cmd to the coordinator.
 pub fn update(state: &mut UiState, event: AppEvent) -> Option<Cmd> {
@@ -62,6 +62,26 @@ pub fn update(state: &mut UiState, event: AppEvent) -> Option<Cmd> {
             None
         }
 
+        AppEvent::AllMetadataLoaded(items) => {
+            state.metadata_map = items.into_iter().map(|m| (m.steam_app_id, m)).collect();
+            None
+        }
+
+        AppEvent::MetadataEnriched(meta) => {
+            state.metadata_map.insert(meta.steam_app_id, meta);
+            None
+        }
+
+        AppEvent::MetadataProgress { done, total } => {
+            state.metadata_progress = Some((done, total));
+            None
+        }
+
+        AppEvent::MetadataSyncComplete => {
+            // Leave the completed progress visible so the user can see it finished
+            None
+        }
+
         AppEvent::SyncStateLoaded(last_synced) => {
             let stale = match last_synced {
                 None => Some("never synced".to_string()),
@@ -97,6 +117,8 @@ fn handle_input(state: &mut UiState, event: Event) -> Option<Cmd> {
         Mode::Auth => handle_auth_input(state, key),
         Mode::Search => handle_search_input(state, key),
         Mode::ExportPrompt => handle_export_input(state, key),
+        Mode::GenrePicker => { handle_genre_picker_input(state, key); return None; }
+        Mode::SortPicker => { handle_sort_picker_input(state, key); return None; }
         Mode::Error => {
             // Any key dismisses the error
             state.last_error = None;
@@ -209,10 +231,17 @@ fn handle_normal_input(state: &mut UiState, key: crossterm::event::KeyEvent) -> 
             None
         }
 
-        // Sort cycle
+        // Sort cycle (s) or sort picker (S)
         (KeyModifiers::NONE, KeyCode::Char('s')) => {
             state.filter.sort = state.filter.sort.next();
             state.apply_filters();
+            None
+        }
+        (KeyModifiers::SHIFT, KeyCode::Char('S')) | (KeyModifiers::NONE, KeyCode::Char('S')) => {
+            // Open sort picker, pre-positioned at current sort
+            let cursor = SortOrder::all().iter().position(|o| o == &state.filter.sort).unwrap_or(0);
+            state.sort_picker_cursor = cursor;
+            state.mode = Mode::SortPicker;
             None
         }
 
@@ -227,9 +256,27 @@ fn handle_normal_input(state: &mut UiState, key: crossterm::event::KeyEvent) -> 
             None
         }
 
+        // Open genre/tag picker
+        (KeyModifiers::NONE, KeyCode::Char('t')) => {
+            let picker = crate::tui::state::GenrePickerState::new(
+                &state.metadata_map,
+                &state.filter.genre_filter,
+            );
+            state.genre_picker = Some(picker);
+            state.mode = Mode::GenrePicker;
+            None
+        }
+
         // Refresh / sync
         (KeyModifiers::NONE, KeyCode::Char('r')) => {
             Some(Cmd::StartFullSync)
+        }
+
+        // Metadata enrichment sync (Steam + IGDB)
+        (KeyModifiers::SHIFT, KeyCode::Char('R')) |
+        (KeyModifiers::NONE, KeyCode::Char('R')) => {
+            state.metadata_progress = Some((0, 0));
+            Some(Cmd::StartMetadataSync)
         }
 
         // Export
@@ -290,6 +337,145 @@ fn handle_auth_input(state: &mut UiState, key: crossterm::event::KeyEvent) -> Op
         _ => {}
     }
     None
+}
+
+fn handle_genre_picker_input(state: &mut UiState, key: crossterm::event::KeyEvent) {
+    use crate::tui::state::{PickerSubMode};
+
+    let sub_mode = state.genre_picker.as_ref().map(|p| p.sub_mode.clone());
+
+    match sub_mode {
+        Some(PickerSubMode::Search) => {
+            match (key.modifiers, key.code) {
+                (KeyModifiers::NONE, KeyCode::Esc) => {
+                    // Exit search mode, return to navigate
+                    if let Some(picker) = &mut state.genre_picker {
+                        picker.sub_mode = PickerSubMode::Navigate;
+                    }
+                }
+                (KeyModifiers::NONE, KeyCode::Enter) => {
+                    // Confirm search, return to navigate
+                    if let Some(picker) = &mut state.genre_picker {
+                        picker.sub_mode = PickerSubMode::Navigate;
+                    }
+                }
+                (KeyModifiers::NONE, KeyCode::Backspace) => {
+                    if let Some(picker) = &mut state.genre_picker {
+                        picker.search.pop();
+                        picker.apply_view();
+                    }
+                }
+                (KeyModifiers::NONE, KeyCode::Char(c)) => {
+                    if let Some(picker) = &mut state.genre_picker {
+                        picker.search.push(c);
+                        picker.apply_view();
+                    }
+                }
+                _ => {}
+            }
+        }
+        Some(PickerSubMode::Navigate) | None => {
+            match (key.modifiers, key.code) {
+                (KeyModifiers::NONE, KeyCode::Esc) => {
+                    // If there's a search query, clear it first; otherwise close modal
+                    let has_search = state.genre_picker.as_ref().map_or(false, |p| !p.search.is_empty());
+                    if has_search {
+                        if let Some(picker) = &mut state.genre_picker {
+                            picker.search.clear();
+                            picker.apply_view();
+                        }
+                    } else {
+                        state.genre_picker = None;
+                        state.mode = Mode::Normal;
+                    }
+                }
+                (KeyModifiers::NONE, KeyCode::Enter) => {
+                    if let Some(picker) = state.genre_picker.take() {
+                        state.filter.genre_filter = picker.pending_filter;
+                    }
+                    state.mode = Mode::Normal;
+                    state.apply_filters();
+                }
+                (KeyModifiers::NONE, KeyCode::Char(' ')) => {
+                    if let Some(picker) = &mut state.genre_picker {
+                        picker.toggle_current();
+                    }
+                }
+                (KeyModifiers::NONE, KeyCode::Char('j')) | (KeyModifiers::NONE, KeyCode::Down) => {
+                    if let Some(picker) = &mut state.genre_picker {
+                        picker.move_down();
+                    }
+                }
+                (KeyModifiers::NONE, KeyCode::Char('k')) | (KeyModifiers::NONE, KeyCode::Up) => {
+                    if let Some(picker) = &mut state.genre_picker {
+                        picker.move_up();
+                    }
+                }
+                (KeyModifiers::NONE, KeyCode::Char('g')) => {
+                    if let Some(picker) = &mut state.genre_picker {
+                        picker.jump_top();
+                    }
+                }
+                (KeyModifiers::SHIFT, KeyCode::Char('G')) | (KeyModifiers::NONE, KeyCode::Char('G')) => {
+                    if let Some(picker) = &mut state.genre_picker {
+                        picker.jump_bottom();
+                    }
+                }
+                (KeyModifiers::NONE, KeyCode::Char('s')) => {
+                    if let Some(picker) = &mut state.genre_picker {
+                        picker.sort = picker.sort.next();
+                        picker.apply_view();
+                    }
+                }
+                (KeyModifiers::NONE, KeyCode::Char('f')) => {
+                    if let Some(picker) = &mut state.genre_picker {
+                        picker.type_filter = picker.type_filter.next();
+                        picker.apply_view();
+                    }
+                }
+                (KeyModifiers::NONE, KeyCode::Char('/')) => {
+                    if let Some(picker) = &mut state.genre_picker {
+                        picker.sub_mode = PickerSubMode::Search;
+                    }
+                }
+                (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
+                    if let Some(picker) = &mut state.genre_picker {
+                        picker.pending_filter.clear();
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+fn handle_sort_picker_input(state: &mut UiState, key: crossterm::event::KeyEvent) {
+    let all = SortOrder::all();
+    match (key.modifiers, key.code) {
+        (KeyModifiers::NONE, KeyCode::Esc) => {
+            state.mode = Mode::Normal;
+        }
+        (KeyModifiers::NONE, KeyCode::Enter) => {
+            if let Some(order) = all.get(state.sort_picker_cursor) {
+                state.filter.sort = order.clone();
+                state.apply_filters();
+            }
+            state.mode = Mode::Normal;
+        }
+        (KeyModifiers::NONE, KeyCode::Char('j')) | (KeyModifiers::NONE, KeyCode::Down) => {
+            state.sort_picker_cursor = (state.sort_picker_cursor + 1).min(all.len().saturating_sub(1));
+        }
+        (KeyModifiers::NONE, KeyCode::Char('k')) | (KeyModifiers::NONE, KeyCode::Up) => {
+            state.sort_picker_cursor = state.sort_picker_cursor.saturating_sub(1);
+        }
+        (KeyModifiers::NONE, KeyCode::Char('g')) => {
+            state.sort_picker_cursor = 0;
+        }
+        (KeyModifiers::SHIFT, KeyCode::Char('G')) | (KeyModifiers::NONE, KeyCode::Char('G')) => {
+            state.sort_picker_cursor = all.len().saturating_sub(1);
+        }
+        _ => {}
+    }
 }
 
 fn handle_export_input(state: &mut UiState, key: crossterm::event::KeyEvent) -> Option<Cmd> {

@@ -8,6 +8,7 @@ use ratatui::{
 };
 
 use crate::models::key::Platform;
+use crate::models::metadata::SteamDeckCompat;
 use crate::tui::state::{ListItem, UiState};
 
 pub struct DetailPanel<'a> {
@@ -65,8 +66,49 @@ impl<'a> Widget for DetailPanel<'a> {
                     lines.push(expires_line);
                 }
 
-                // Genres
-                if !k.igdb_genres.is_empty() {
+                // Enriched metadata (Steam/IGDB)
+                if let Some(app_id) = k.steam_app_id {
+                    if let Some(meta) = self.state.metadata_map.get(&app_id) {
+                        if !meta.steam_tags.is_empty() {
+                            let tags = meta.steam_tags.iter().take(6).cloned().collect::<Vec<_>>().join(", ");
+                            lines.push(field("Tags", &tags));
+                        }
+                        if !meta.steam_genres.is_empty() {
+                            lines.push(field("Genres", &meta.steam_genres.join(", ")));
+                        } else if !meta.igdb_genres.is_empty() {
+                            lines.push(field("Genres", &meta.igdb_genres.join(", ")));
+                        }
+                        if let Some(score) = meta.metacritic_score {
+                            let (score_str, color) = metacritic_display(score);
+                            lines.push(Line::from(vec![
+                                label("Metacritic"),
+                                Span::styled(score_str, Style::default().fg(color)),
+                            ]));
+                        }
+                        if let Some(rating) = meta.steam_user_rating {
+                            let (rating_str, color) = user_rating_display(rating);
+                            lines.push(Line::from(vec![
+                                label("User rating"),
+                                Span::styled(rating_str, Style::default().fg(color)),
+                            ]));
+                        }
+                        if let Some(rating) = meta.igdb_rating {
+                            let (rating_str, color) = igdb_rating_display(rating);
+                            lines.push(Line::from(vec![
+                                label("IGDB"),
+                                Span::styled(rating_str, Style::default().fg(color)),
+                            ]));
+                        }
+                        if let Some(compat) = meta.steam_deck_compat {
+                            lines.push(Line::from(vec![
+                                label("Steam Deck"),
+                                Span::styled(compat.label(), deck_compat_style(compat)),
+                            ]));
+                        }
+                    } else if !k.igdb_genres.is_empty() {
+                        lines.push(field("Genres", &k.igdb_genres.join(", ")));
+                    }
+                } else if !k.igdb_genres.is_empty() {
                     lines.push(field("Genres", &k.igdb_genres.join(", ")));
                 }
 
@@ -132,8 +174,54 @@ impl<'a> Widget for DetailPanel<'a> {
                     }
                 }
 
-                // Genres (come directly from Humble)
-                if !p.genres.is_empty() {
+                // Enriched metadata (Steam/IGDB), falling back to Humble-provided genres
+                if let Some(app_id) = p.steam_app_id {
+                    if let Some(meta) = self.state.metadata_map.get(&app_id) {
+                        if !meta.steam_tags.is_empty() {
+                            let tags = meta.steam_tags.iter().take(6).cloned().collect::<Vec<_>>().join(", ");
+                            lines.push(field("Tags", &tags));
+                        }
+                        let genres = if !meta.steam_genres.is_empty() {
+                            &meta.steam_genres
+                        } else if !meta.igdb_genres.is_empty() {
+                            &meta.igdb_genres
+                        } else {
+                            &p.genres
+                        };
+                        if !genres.is_empty() {
+                            lines.push(field("Genres", &genres.join(", ")));
+                        }
+                        if let Some(score) = meta.metacritic_score {
+                            let (score_str, color) = metacritic_display(score);
+                            lines.push(Line::from(vec![
+                                label("Metacritic"),
+                                Span::styled(score_str, Style::default().fg(color)),
+                            ]));
+                        }
+                        if let Some(rating) = meta.steam_user_rating {
+                            let (rating_str, color) = user_rating_display(rating);
+                            lines.push(Line::from(vec![
+                                label("User rating"),
+                                Span::styled(rating_str, Style::default().fg(color)),
+                            ]));
+                        }
+                        if let Some(rating) = meta.igdb_rating {
+                            let (rating_str, color) = igdb_rating_display(rating);
+                            lines.push(Line::from(vec![
+                                label("IGDB"),
+                                Span::styled(rating_str, Style::default().fg(color)),
+                            ]));
+                        }
+                        if let Some(compat) = meta.steam_deck_compat {
+                            lines.push(Line::from(vec![
+                                label("Steam Deck"),
+                                Span::styled(compat.label(), deck_compat_style(compat)),
+                            ]));
+                        }
+                    } else if !p.genres.is_empty() {
+                        lines.push(field("Genres", &p.genres.join(", ")));
+                    }
+                } else if !p.genres.is_empty() {
                     lines.push(field("Genres", &p.genres.join(", ")));
                 }
 
@@ -202,6 +290,30 @@ fn platform_store_hint(platform: &Platform, steam_app_id: Option<u32>) -> Option
         // DrmFree, HumbleApp, Other — fall back to Steam search
         _ => " to search Steam for this game".to_string(),
     })
+}
+
+fn deck_compat_style(compat: SteamDeckCompat) -> Style {
+    match compat {
+        SteamDeckCompat::Verified => Style::default().fg(Color::Green),
+        SteamDeckCompat::Playable => Style::default().fg(Color::Yellow),
+        SteamDeckCompat::Unsupported => Style::default().fg(Color::Red),
+    }
+}
+
+fn user_rating_display(rating: f32) -> (String, Color) {
+    let pct = (rating * 100.0).round() as u32;
+    let color = if pct >= 80 { Color::Green } else if pct >= 60 { Color::Yellow } else { Color::Red };
+    (format!("{}%", pct), color)
+}
+
+fn metacritic_display(score: u32) -> (String, Color) {
+    let color = if score >= 75 { Color::Green } else if score >= 50 { Color::Yellow } else { Color::Red };
+    (format!("{}/100", score), color)
+}
+
+fn igdb_rating_display(rating: f64) -> (String, Color) {
+    let color = if rating >= 75.0 { Color::Green } else if rating >= 50.0 { Color::Yellow } else { Color::Red };
+    (format!("{:.0}/100", rating), color)
 }
 
 fn format_duration(delta: chrono::TimeDelta) -> String {
