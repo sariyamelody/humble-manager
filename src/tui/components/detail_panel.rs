@@ -7,6 +7,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Widget, Wrap},
 };
 
+use crate::models::key::Platform;
 use crate::tui::state::{ListItem, UiState};
 
 pub struct DetailPanel<'a> {
@@ -89,14 +90,11 @@ impl<'a> Widget for DetailPanel<'a> {
                     Span::styled(" to open Humble page", Style::default().fg(Color::DarkGray)),
                 ]));
 
-                if k.platform.store_url(&k.human_name, k.steam_app_id).is_some() {
+                if let Some(store_hint) = platform_store_hint(&k.platform, k.steam_app_id) {
                     lines.push(Line::from(vec![
                         Span::styled("Press ", Style::default().fg(Color::DarkGray)),
                         Span::styled("O", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
-                        Span::styled(
-                            format!(" to open {} store page", k.platform.display_name()),
-                            Style::default().fg(Color::DarkGray),
-                        ),
+                        Span::styled(store_hint, Style::default().fg(Color::DarkGray)),
                     ]));
                 }
 
@@ -154,6 +152,14 @@ impl<'a> Widget for DetailPanel<'a> {
                     Span::styled(" to open claim page", Style::default().fg(Color::DarkGray)),
                 ]));
 
+                if let Some(store_hint) = platform_store_hint(&p.platform, p.steam_app_id) {
+                    lines.push(Line::from(vec![
+                        Span::styled("Press ", Style::default().fg(Color::DarkGray)),
+                        Span::styled("O", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+                        Span::styled(store_hint, Style::default().fg(Color::DarkGray)),
+                    ]));
+                }
+
                 lines
             }
         };
@@ -175,6 +181,27 @@ fn field<'a>(name: &str, value: &str) -> Line<'a> {
         Span::styled(format!("{:<10} ", name), Style::default().fg(Color::DarkGray)),
         Span::raw(value.to_string()),
     ])
+}
+
+/// Returns a hint string for the O keybinding, e.g. " to open Steam page" or
+/// " to search Steam for this game". Returns None only for platforms with no URL.
+fn platform_store_hint(platform: &Platform, steam_app_id: Option<u32>) -> Option<String> {
+    platform.store_url("x", steam_app_id)?;  // bail if no URL
+    Some(match platform {
+        Platform::Steam => {
+            if steam_app_id.is_some() {
+                " to open Steam page".to_string()
+            } else {
+                " to search Steam for this game".to_string()
+            }
+        }
+        Platform::Gog | Platform::EpicGames | Platform::Ubisoft |
+        Platform::Itch | Platform::BattleNet => {
+            format!(" to open {} store page", platform.display_name())
+        }
+        // DrmFree, HumbleApp, Other — fall back to Steam search
+        _ => " to search Steam for this game".to_string(),
+    })
 }
 
 fn format_duration(delta: chrono::TimeDelta) -> String {

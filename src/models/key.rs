@@ -98,7 +98,11 @@ impl Platform {
             Platform::Ubisoft => Some(format!("https://store.ubisoft.com/en-gb/search?searchText={}", q)),
             Platform::Itch => Some(format!("https://itch.io/search?q={}", q)),
             Platform::BattleNet => Some("https://us.battle.net/shop/".to_string()),
-            Platform::DrmFree | Platform::HumbleApp | Platform::Other(_) => None,
+            // For DRM-free, Humble App, and unrecognised platforms fall back to a Steam
+            // search — most Humble games are on Steam and this is a useful safe default.
+            Platform::DrmFree | Platform::HumbleApp | Platform::Other(_) => {
+                Some(format!("https://store.steampowered.com/search/?term={}", q))
+            }
         }
     }
 }
