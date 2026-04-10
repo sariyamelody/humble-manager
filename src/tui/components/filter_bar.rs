@@ -30,6 +30,13 @@ impl<'a> Widget for FilterBar<'a> {
             Span::raw("  "),
             Span::styled("Status: ", label),
             chip(
+                "All",
+                self.state.filter.redeem_status.is_none(),
+                active,
+                inactive,
+            ),
+            Span::raw(" "),
+            chip(
                 "Unredeemed",
                 matches!(&self.state.filter.redeem_status, Some(s) if matches!(s, crate::models::key::RedeemStatus::Unredeemed)),
                 active,
@@ -37,8 +44,8 @@ impl<'a> Widget for FilterBar<'a> {
             ),
             Span::raw(" "),
             chip(
-                "All",
-                self.state.filter.redeem_status.is_none(),
+                "Redeemed",
+                matches!(&self.state.filter.redeem_status, Some(s) if matches!(s, crate::models::key::RedeemStatus::Redeemed)),
                 active,
                 inactive,
             ),
