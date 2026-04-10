@@ -155,10 +155,18 @@ fn handle_normal_input(state: &mut UiState, key: crossterm::event::KeyEvent) -> 
         // SHIFT for capital letters.
         (KeyModifiers::SHIFT, KeyCode::Char('O')) |
         (KeyModifiers::NONE, KeyCode::Char('O')) => {
-            if let Some(crate::tui::state::ListItem::Key(k)) = state.selected_item() {
-                if let Some(url) = k.platform.store_url(&k.human_name, k.steam_app_id) {
-                    let _ = open::that(url);
+            match state.selected_item() {
+                Some(crate::tui::state::ListItem::Key(k)) => {
+                    if let Some(url) = k.platform.store_url(&k.human_name, k.steam_app_id) {
+                        let _ = open::that(url);
+                    }
                 }
+                Some(crate::tui::state::ListItem::Choice(p)) => {
+                    if let Some(url) = p.platform.store_url(&p.human_name, p.steam_app_id) {
+                        let _ = open::that(url);
+                    }
+                }
+                None => {}
             }
             None
         }

@@ -152,6 +152,14 @@ impl<'a> Widget for DetailPanel<'a> {
                     Span::styled(" to open claim page", Style::default().fg(Color::DarkGray)),
                 ]));
 
+                if let Some(store_hint) = platform_store_hint(&p.platform, p.steam_app_id) {
+                    lines.push(Line::from(vec![
+                        Span::styled("Press ", Style::default().fg(Color::DarkGray)),
+                        Span::styled("O", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+                        Span::styled(store_hint, Style::default().fg(Color::DarkGray)),
+                    ]));
+                }
+
                 lines
             }
         };
@@ -175,13 +183,10 @@ fn field<'a>(name: &str, value: &str) -> Line<'a> {
     ])
 }
 
-/// Returns a hint string like " to open Steam page" or " to search Steam for this game",
-/// or None if the platform has no store URL.
+/// Returns a hint string for the O keybinding, e.g. " to open Steam page" or
+/// " to search Steam for this game". Returns None only for platforms with no URL.
 fn platform_store_hint(platform: &Platform, steam_app_id: Option<u32>) -> Option<String> {
-    // Verify the platform has a store URL at all
-    if platform.store_url("x", steam_app_id).is_none() {
-        return None;
-    }
+    platform.store_url("x", steam_app_id)?;  // bail if no URL
     Some(match platform {
         Platform::Steam => {
             if steam_app_id.is_some() {
@@ -190,7 +195,12 @@ fn platform_store_hint(platform: &Platform, steam_app_id: Option<u32>) -> Option
                 " to search Steam for this game".to_string()
             }
         }
-        other => format!(" to open {} store page", other.display_name()),
+        Platform::Gog | Platform::EpicGames | Platform::Ubisoft |
+        Platform::Itch | Platform::BattleNet => {
+            format!(" to open {} store page", platform.display_name())
+        }
+        // DrmFree, HumbleApp, Other — fall back to Steam search
+        _ => " to search Steam for this game".to_string(),
     })
 }
 
