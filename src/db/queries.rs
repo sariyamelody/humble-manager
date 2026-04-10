@@ -144,6 +144,8 @@ fn upsert_game_key(conn: &Connection, k: &GameKey) -> Result<()> {
          ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?16)
          ON CONFLICT(tpkd_machine_name) DO UPDATE SET
            human_name          = excluded.human_name,
+           purchase_date       = excluded.purchase_date,
+           bundle_human_name   = excluded.bundle_human_name,
            redeemed_key_val    = COALESCE(excluded.redeemed_key_val, game_keys.redeemed_key_val),
            is_revealed         = excluded.is_revealed,
            redeem_status       = excluded.redeem_status,
