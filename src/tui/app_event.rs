@@ -40,6 +40,8 @@ pub enum Cmd {
     StartMetadataSync,
     /// Export currently filtered view to CSV at the given path
     ExportCsv(std::path::PathBuf),
+    /// Persist updated column list to config.toml
+    SaveColumns(Vec<String>),
     /// Shut down
     Quit,
 }

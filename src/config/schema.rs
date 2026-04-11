@@ -53,6 +53,10 @@ pub struct UiConfig {
     pub default_sort: String,
     pub show_redeemed: bool,
     pub show_expired: bool,
+    /// Column IDs to display, in order. Valid values: name, platform, status, bundle,
+    /// purchase_date, expiry, metacritic, user_rating, steam_deck
+    #[serde(default = "UiConfig::default_columns")]
+    pub columns: Vec<String>,
 }
 
 impl Default for Config {
@@ -87,6 +91,17 @@ impl Default for ExportConfig {
     }
 }
 
+impl UiConfig {
+    fn default_columns() -> Vec<String> {
+        vec![
+            "name".to_string(),
+            "platform".to_string(),
+            "status".to_string(),
+            "bundle".to_string(),
+        ]
+    }
+}
+
 impl Default for UiConfig {
     fn default() -> Self {
         Self {
@@ -94,6 +109,7 @@ impl Default for UiConfig {
             default_sort: "purchase_date_desc".to_string(),
             show_redeemed: true,
             show_expired: false,
+            columns: Self::default_columns(),
         }
     }
 }

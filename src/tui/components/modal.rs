@@ -7,7 +7,7 @@ use ratatui::{
 };
 
 use crate::models::filter::SortOrder;
-use crate::tui::state::{PickerSubMode, UiState};
+use crate::tui::state::{PickerSubMode, UiState, ALL_COLUMN_IDS};
 
 /// Auth modal: prompts the user to paste their session cookie.
 pub struct AuthModal<'a> {
@@ -369,6 +369,89 @@ impl<'a> Widget for SortPickerModal<'a> {
             hint_key("j/k"), hint_desc(":move  "),
             hint_key("g/G"), hint_desc(":top/bot  "),
             hint_key("Enter"), hint_desc(":select  "),
+            hint_key("Esc"), hint_desc(":cancel"),
+        ]);
+        Paragraph::new(footer_line)
+            .style(Style::default().bg(Color::Black))
+            .render(layout[1], buf);
+    }
+}
+
+/// Column visibility picker modal.
+pub struct ColumnPickerModal<'a> {
+    pub state: &'a UiState,
+}
+
+impl<'a> Widget for ColumnPickerModal<'a> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let height = ALL_COLUMN_IDS.len() as u16 + 4; // borders + footer
+        let modal_area = centered_rect(44, height, area);
+        Clear.render(modal_area, buf);
+
+        let block = Block::default()
+            .title(" Columns ")
+            .borders(Borders::ALL)
+            .style(Style::default().bg(Color::DarkGray));
+
+        let inner = block.inner(modal_area);
+        block.render(modal_area, buf);
+
+        let picker = match &self.state.column_picker {
+            Some(p) => p,
+            None => return,
+        };
+
+        let layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Min(0),
+                Constraint::Length(1),
+            ])
+            .split(inner);
+
+        let active_style = Style::default()
+            .fg(Color::Black).bg(Color::Cyan)
+            .add_modifier(Modifier::BOLD);
+
+        let items: Vec<ListItem> = ALL_COLUMN_IDS.iter().enumerate().map(|(i, &col)| {
+            let checked = picker.pending.contains(&col);
+            let is_cursor = i == picker.cursor;
+
+            let (checkbox, checkbox_style) = if checked {
+                ("[x]", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))
+            } else {
+                ("[ ]", Style::default().fg(Color::DarkGray))
+            };
+
+            ListItem::new(Line::from(vec![
+                Span::styled(
+                    format!("{} ", checkbox),
+                    if is_cursor { Style::default().fg(Color::Black) } else { checkbox_style },
+                ),
+                Span::styled(
+                    col.label(),
+                    if is_cursor {
+                        Style::default().fg(Color::Black).add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default()
+                    },
+                ),
+            ]))
+        }).collect();
+
+        let mut list_state = ratatui::widgets::ListState::default();
+        list_state.select(Some(picker.cursor));
+
+        let list = List::new(items)
+            .highlight_style(active_style)
+            .highlight_symbol("▶ ");
+
+        StatefulWidget::render(list, layout[0], buf, &mut list_state);
+
+        let footer_line = Line::from(vec![
+            hint_key("j/k"), hint_desc(":move  "),
+            hint_key("Space"), hint_desc(":toggle  "),
+            hint_key("Enter"), hint_desc(":apply  "),
             hint_key("Esc"), hint_desc(":cancel"),
         ]);
         Paragraph::new(footer_line)
