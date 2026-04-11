@@ -46,7 +46,7 @@ pub async fn run() -> Result<()> {
     ));
 
     // Build initial UI state
-    let mut state = UiState::new(&config.ui.default_sort, config.ui.show_redeemed);
+    let mut state = UiState::new(&config.ui.default_sort, config.ui.show_redeemed, &config.ui.columns);
 
     // If no cookie configured, start in auth mode
     if config.needs_auth() {
@@ -128,6 +128,13 @@ fn handle_event(
     if let Some(cmd) = maybe_cmd {
         match cmd {
             Cmd::Quit => return Ok(LoopAction::Break),
+            Cmd::SaveColumns(cols) => {
+                let mut new_config = config.clone();
+                new_config.ui.columns = cols;
+                if let Err(e) = new_config.save() {
+                    state.last_error = Some(format!("Failed to save config: {}", e));
+                }
+            }
             Cmd::ExportCsv(path) => {
                 let keys = state.visible.clone();
                 if let Err(e) = export_csv(&path, &keys) {

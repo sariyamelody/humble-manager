@@ -9,6 +9,130 @@ use crate::models::{
 };
 use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
 
+/// Which column to display in the key table.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ColumnId {
+    Name,
+    Platform,
+    Status,
+    Bundle,
+    PurchaseDate,
+    Expiry,
+    Metacritic,
+    UserRating,
+    SteamDeck,
+}
+
+impl ColumnId {
+    pub fn label(self) -> &'static str {
+        match self {
+            ColumnId::Name => "Name",
+            ColumnId::Platform => "Platform",
+            ColumnId::Status => "Status",
+            ColumnId::Bundle => "Bundle",
+            ColumnId::PurchaseDate => "Purchase Date",
+            ColumnId::Expiry => "Expiry",
+            ColumnId::Metacritic => "Metacritic Score",
+            ColumnId::UserRating => "User Rating",
+            ColumnId::SteamDeck => "Steam Deck",
+        }
+    }
+
+    pub fn from_config_str(s: &str) -> Option<Self> {
+        match s {
+            "name" => Some(ColumnId::Name),
+            "platform" => Some(ColumnId::Platform),
+            "status" => Some(ColumnId::Status),
+            "bundle" => Some(ColumnId::Bundle),
+            "purchase_date" => Some(ColumnId::PurchaseDate),
+            "expiry" => Some(ColumnId::Expiry),
+            "metacritic" => Some(ColumnId::Metacritic),
+            "user_rating" => Some(ColumnId::UserRating),
+            "steam_deck" => Some(ColumnId::SteamDeck),
+            _ => None,
+        }
+    }
+
+    pub fn to_config_str(self) -> &'static str {
+        match self {
+            ColumnId::Name => "name",
+            ColumnId::Platform => "platform",
+            ColumnId::Status => "status",
+            ColumnId::Bundle => "bundle",
+            ColumnId::PurchaseDate => "purchase_date",
+            ColumnId::Expiry => "expiry",
+            ColumnId::Metacritic => "metacritic",
+            ColumnId::UserRating => "user_rating",
+            ColumnId::SteamDeck => "steam_deck",
+        }
+    }
+}
+
+/// All available columns in canonical display order.
+pub const ALL_COLUMN_IDS: &[ColumnId] = &[
+    ColumnId::Name,
+    ColumnId::Platform,
+    ColumnId::Status,
+    ColumnId::Bundle,
+    ColumnId::PurchaseDate,
+    ColumnId::Expiry,
+    ColumnId::Metacritic,
+    ColumnId::UserRating,
+    ColumnId::SteamDeck,
+];
+
+pub fn default_columns() -> Vec<ColumnId> {
+    vec![ColumnId::Name, ColumnId::Platform, ColumnId::Status, ColumnId::Bundle]
+}
+
+pub fn parse_columns(strs: &[String]) -> Vec<ColumnId> {
+    let parsed: Vec<ColumnId> = strs.iter()
+        .filter_map(|s| ColumnId::from_config_str(s))
+        .collect();
+    if parsed.is_empty() { default_columns() } else { parsed }
+}
+
+pub struct ColumnPickerState {
+    pub cursor: usize,
+    /// Columns toggled on (pending confirmation), in canonical order.
+    pub pending: Vec<ColumnId>,
+}
+
+impl ColumnPickerState {
+    pub fn new(active: &[ColumnId]) -> Self {
+        Self { cursor: 0, pending: active.to_vec() }
+    }
+
+    pub fn move_down(&mut self) {
+        self.cursor = (self.cursor + 1).min(ALL_COLUMN_IDS.len().saturating_sub(1));
+    }
+
+    pub fn move_up(&mut self) {
+        self.cursor = self.cursor.saturating_sub(1);
+    }
+
+    pub fn jump_top(&mut self) { self.cursor = 0; }
+
+    pub fn jump_bottom(&mut self) {
+        self.cursor = ALL_COLUMN_IDS.len().saturating_sub(1);
+    }
+
+    pub fn toggle_current(&mut self) {
+        let col = ALL_COLUMN_IDS[self.cursor];
+        if self.pending.contains(&col) {
+            if self.pending.len() > 1 {
+                self.pending.retain(|&c| c != col);
+            }
+        } else {
+            self.pending.push(col);
+            // Re-sort to canonical order
+            self.pending.sort_by_key(|c| {
+                ALL_COLUMN_IDS.iter().position(|a| a == c).unwrap_or(usize::MAX)
+            });
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Mode {
     /// Navigating the key list
@@ -27,6 +151,8 @@ pub enum Mode {
     GenrePicker,
     /// Sort order picker modal
     SortPicker,
+    /// Column visibility picker modal
+    ColumnPicker,
 }
 
 /// Sub-mode within the genre picker: navigating the list vs typing a search query.
@@ -276,6 +402,13 @@ impl ListItem {
             ListItem::Choice(p) => &p.machine_name,
         }
     }
+
+    pub fn steam_app_id(&self) -> Option<u32> {
+        match self {
+            ListItem::Key(k) => k.steam_app_id,
+            ListItem::Choice(p) => p.steam_app_id,
+        }
+    }
 }
 
 pub struct UiState {
@@ -299,6 +432,10 @@ pub struct UiState {
     pub genre_picker: Option<GenrePickerState>,
     /// Cursor position in the sort picker modal (index into SortOrder::all())
     pub sort_picker_cursor: usize,
+    /// State for the column picker modal
+    pub column_picker: Option<ColumnPickerState>,
+    /// Currently active columns (persisted to config on change)
+    pub active_columns: Vec<ColumnId>,
     pub last_error: Option<String>,
     /// Accumulator for search input
     pub search_input: String,
@@ -313,7 +450,7 @@ pub struct UiState {
 
 
 impl UiState {
-    pub fn new(default_sort: &str, show_redeemed: bool) -> Self {
+    pub fn new(default_sort: &str, show_redeemed: bool, columns: &[String]) -> Self {
         let sort = match default_sort {
             "purchase_date_asc" => SortOrder::PurchaseDateAsc,
             "name_asc" => SortOrder::NameAsc,
@@ -339,6 +476,8 @@ impl UiState {
             metadata_map: HashMap::new(),
             genre_picker: None,
             sort_picker_cursor: 0,
+            column_picker: None,
+            active_columns: parse_columns(columns),
             last_error: None,
             search_input: String::new(),
             auth_input: String::new(),

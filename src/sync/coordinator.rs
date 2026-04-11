@@ -45,7 +45,7 @@ pub async fn run(
                     run_metadata_sync(config, db, tx).await;
                 });
             }
-            Cmd::ExportCsv(_) => {
+            Cmd::ExportCsv(_) | Cmd::SaveColumns(_) => {
                 // Handled directly in app.rs
             }
             Cmd::Quit => break,

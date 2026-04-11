@@ -3,7 +3,7 @@ use crossterm::event::{Event, KeyCode, KeyModifiers};
 
 use crate::tui::{
     app_event::{AppEvent, Cmd},
-    state::{Mode, UiState},
+    state::{ColumnPickerState, Mode, UiState},
 };
 use crate::models::filter::{SortOrder, SourceFilter};
 
@@ -119,6 +119,7 @@ fn handle_input(state: &mut UiState, event: Event) -> Option<Cmd> {
         Mode::ExportPrompt => handle_export_input(state, key),
         Mode::GenrePicker => { handle_genre_picker_input(state, key); return None; }
         Mode::SortPicker => { handle_sort_picker_input(state, key); return None; }
+        Mode::ColumnPicker => { return handle_column_picker_input(state, key); }
         Mode::Error => {
             // Any key dismisses the error
             state.last_error = None;
@@ -253,6 +254,13 @@ fn handle_normal_input(state: &mut UiState, key: crossterm::event::KeyEvent) -> 
                 SourceFilter::Keys => SourceFilter::All,
             };
             state.apply_filters();
+            None
+        }
+
+        // Open column picker
+        (KeyModifiers::SHIFT, KeyCode::Char('C')) | (KeyModifiers::NONE, KeyCode::Char('C')) => {
+            state.column_picker = Some(ColumnPickerState::new(&state.active_columns));
+            state.mode = Mode::ColumnPicker;
             None
         }
 
@@ -476,6 +484,52 @@ fn handle_sort_picker_input(state: &mut UiState, key: crossterm::event::KeyEvent
         }
         _ => {}
     }
+}
+
+fn handle_column_picker_input(state: &mut UiState, key: crossterm::event::KeyEvent) -> Option<Cmd> {
+    match (key.modifiers, key.code) {
+        (KeyModifiers::NONE, KeyCode::Esc) => {
+            state.column_picker = None;
+            state.mode = Mode::Normal;
+        }
+        (KeyModifiers::NONE, KeyCode::Enter) => {
+            if let Some(picker) = state.column_picker.take() {
+                state.active_columns = picker.pending;
+            }
+            state.mode = Mode::Normal;
+            let cols: Vec<String> = state.active_columns.iter()
+                .map(|c| c.to_config_str().to_string())
+                .collect();
+            return Some(Cmd::SaveColumns(cols));
+        }
+        (KeyModifiers::NONE, KeyCode::Char(' ')) => {
+            if let Some(picker) = &mut state.column_picker {
+                picker.toggle_current();
+            }
+        }
+        (KeyModifiers::NONE, KeyCode::Char('j')) | (KeyModifiers::NONE, KeyCode::Down) => {
+            if let Some(picker) = &mut state.column_picker {
+                picker.move_down();
+            }
+        }
+        (KeyModifiers::NONE, KeyCode::Char('k')) | (KeyModifiers::NONE, KeyCode::Up) => {
+            if let Some(picker) = &mut state.column_picker {
+                picker.move_up();
+            }
+        }
+        (KeyModifiers::NONE, KeyCode::Char('g')) => {
+            if let Some(picker) = &mut state.column_picker {
+                picker.jump_top();
+            }
+        }
+        (KeyModifiers::SHIFT, KeyCode::Char('G')) | (KeyModifiers::NONE, KeyCode::Char('G')) => {
+            if let Some(picker) = &mut state.column_picker {
+                picker.jump_bottom();
+            }
+        }
+        _ => {}
+    }
+    None
 }
 
 fn handle_export_input(state: &mut UiState, key: crossterm::event::KeyEvent) -> Option<Cmd> {
